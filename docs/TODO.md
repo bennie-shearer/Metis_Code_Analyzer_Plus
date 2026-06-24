@@ -4,87 +4,85 @@ Open work and completed history, tracked honestly.
 
 ## Open
 
-### Infrastructure subsystems (future C++20 work; no Docker)
-- [ ] GPU acceleration: C++20 for Windows, Linux, macOS.
-      GET /api/gpu exists; returns "planned".
-- [ ] Kubernetes integration: C++20 for Windows, Linux, macOS.
-      GET /api/kubernetes exists; returns "planned".
-- [ ] Container integration: C++20 for Windows, Linux, macOS.
-      GET /api/containers exists; returns "planned".
+All previously open items were completed in v2.5.0. The following items
+represent the current forward roadmap (C++20; no Docker, no GTest, no PyTest,
+no Doxygen, no Jupyter):
 
-### Analysis depth
+- [ ] SAML / OIDC authentication: bearer-token validation via OIDC discovery
+      document and JWK set (pure C++20, TLS required). Planned for v2.6.0.
+- [ ] Persistent issue status via SQLite: replace NDJSON persistence with a
+      bundled SQLite3 single-file library for indexed queries. Planned v2.6.0.
+- [ ] WebSocket per-file progress events: emit {"event":"progress","file":"..."}
+      from inside the analyzer.analyze() call for streaming file-by-file updates.
 - [ ] Full per-language AST analysis via tree-sitter for all 46+ languages
-      (today AST is opt-in for C, Python, JavaScript, Go, Java, Rust only).
-- [ ] Interprocedural data-flow analysis (long-term; requires libclang or
-      equivalent semantic library; no Docker, no PyTest, no GTest).
-- [ ] Rule catalog expansion: additional MISRA-C, CERT-C, and CWE coverage.
-
-### Operations
-- [ ] Persistent issue status via SQLite (today status is in-memory only;
-      restarting the server resets all lifecycle overrides).
-- [ ] WebSocket push for live scan progress.
-- [ ] SAML / OIDC authentication option.
+      (today AST opt-in covers C, Python, JavaScript, Go, Java, Rust).
+- [ ] Interprocedural data-flow analysis (long-term; no Docker, no GTest).
 
 ## Completed
 
-### v2.4.2
+### v2.5.0
 
-- [x] Technology Inventory panel: GET /api/technologies wired in dashboard.
-      Groups detected frameworks by category; shows name and file count.
-- [x] Quality Gate panel: GET /api/gate wired in dashboard. Shows PASS/FAIL
-      badge, reason, TQI, issue count, and critical count vs thresholds.
-- [x] Issue Status column in Issues table: POST /api/issue/status called on
-      drop-down change. Statuses: open, accepted, wontfix, false_positive.
-      Color-coded; status persisted server-side for session lifetime.
-- [x] Server health dot in header: GET /api/health polled on load and every
-      30 s. Green = online; red = unreachable.
-- [x] Admin Tools panel: Password Hash Generator calls GET /api/hash-password;
-      displays SHA-256 result for paste into code_analyzer.pson.
-- [x] docs/API.md fully rewritten to cover all 36 server endpoints.
-- [x] version.hpp: METIS_CODE_ANALYZER_VERSION_MAJOR/MINOR/PATCH macros
-      corrected to 2.4.2.
-- [x] Version 2.4.2 in all references.
+- [x] Persistent issue status. Issue lifecycle overrides (open, accepted,
+      wontfix, false_positive) written to data/issue_status.ndjson on every
+      POST /api/issue/status change and reloaded at startup. Survives restarts.
+      Configurable via ui.issue_status_file in code_analyzer.pson.
+- [x] WebSocket push for live scan progress. RFC 6455 WebSocket support added
+      to http.hpp (SHA-1 handshake, Base64, text/close frames, send_all).
+      ws_route() API on Server. GET /api/scan/ws endpoint. Dashboard Analyze
+      button uses WebSocket with POST fallback. Progress spinner in header.
+- [x] Infrastructure probing (GPU, Kubernetes, Containers). Real C++20 system
+      probing on Windows, Linux, and macOS:
+        GPU: probes nvidia-smi, then OpenCL runtime library.
+        Kubernetes: checks KUBECONFIG, ~/.kube/config, in-cluster service token.
+        Containers: probes Docker/Podman/containerd socket or Windows named pipe.
+      Returns available/unavailable/disabled with a detail note. No Docker.
+- [x] Rule catalog expansion. 8 new rules added (28-35):
+        SEC-XSS-INNERHTML (CWE-79), SEC-PATH-TRAVERSAL (CWE-22),
+        SEC-PRINTF-FORMAT (CWE-134), ROB-NULL-DEREF (CWE-476),
+        EFF-LOOP-INVARIANT, TRN-COMMENTED-CODE,
+        MISRA-C-14-4 (opt-in), CERT-MEM35-C (opt-in).
+      Total rules: 35 (27 enabled by default).
+
+### v2.4.x
+
+- [x] Header brand text no longer wraps (white-space:nowrap, flex-shrink:0).
+- [x] Console 401 error on /api/projects at page load eliminated.
+- [x] openapi.yaml: version corrected (2.1.4 -> 2.4.0); 12 missing endpoint
+      specs added covering all 36 server routes.
+- [x] docs/ARCHITECTURE.md fully rewritten; corrected include paths.
+- [x] docs/CONFIGURATION.md: 9 missing PSON key sections added.
+- [x] TLS/AES/PQC badge bar changed to horizontal row layout.
+- [x] /api/projects 401 console error fixed; moved to post-auth call.
+
+### v2.3.x
+
+- [x] Technology Inventory panel wired in dashboard (GET /api/technologies).
+- [x] Quality Gate panel wired in dashboard (GET /api/gate).
+- [x] Issue Status lifecycle column in Issues table (GET+POST /api/issue/status).
+- [x] Server health dot in header (GET /api/health, 30 s poll).
+- [x] Admin Tools / Password Hash Generator (GET /api/hash-password).
+- [x] SEC-SQL-CONCAT false positive fixed (CWE-89 pattern tightened).
+- [x] TLS 1.3 badge added; badges changed to horizontal row.
+- [x] All .md/.txt files moved to docs/; root has README.md and CHANGELOG.md.
 
 ### v2.2.0
 
-- [x] Infrastructure panel: GPU, Kubernetes, Container cards (pgpu, pk8s, pctr).
-- [x] TLS/Security Configuration panel populated from /api/security.
-- [x] AI Configuration panel populated from /api/config ai sub-object.
+- [x] Infrastructure panel with GPU/K8s/Container cards.
+- [x] TLS/Security Configuration panel.
+- [x] AI Configuration panel.
 - [x] /api/security extended with protocol and cert_cn fields.
 - [x] /api/config extended with full ai sub-object.
-- [x] Port 8080 configurable; BACKGROUND.md re-crafted with ToC.
-- [x] All .md/.txt docs consolidated in docs/.
+- [x] BACKGROUND.md re-crafted with Table of Contents.
 
 ### v2.1.x and earlier
 
-- [x] Export downloads named from scanned project stem (v2.1.7).
-- [x] CSV provenance preamble (v2.1.6).
-- [x] Rule false-positive tightening: SEC-EVAL, SEC-HARDCODED-SECRET,
-      SEC-SYSTEM-CALL, CHG-MAGIC-PATH (v2.1.5).
-- [x] Portability rules guard-aware (v2.1.5).
-- [x] 46-language support (v2.0.0 + v1.9.6 + v1.8.5).
-- [x] AST-accurate metrics via vendored tree-sitter for C, Python,
-      JavaScript, Go, Java, Rust (METIS_ENABLE_AST=ON) (v1.9.9).
-- [x] Quality gate: GET /api/gate; gate.* PSON; exit_nonzero for CI (v1.9.9).
-- [x] Issue lifecycle: POST /api/issue/status (v1.9.9).
-- [x] Technology inventory: GET /api/technologies (v1.9.9).
-- [x] Post-quantum TLS X25519MLKEM768; OpenSSL 4.0.0 prebuilt (v1.9.7).
-- [x] Multi-project support (v1.8.7).
-- [x] Incremental scanning: mtime cache (v1.8.7).
-- [x] License header detection: GET /api/licenses (v1.8.6).
-- [x] Webhook on scan completion (v1.8.6).
-- [x] Watch mode: scan.watch (v1.8.6).
-- [x] API key authentication: X-API-Key header (v1.8.6).
-- [x] PDF, JSON, CSV exports (v1.8.0 / v1.8.6).
-- [x] Prometheus metrics: GET /metrics (v1.8.0).
-- [x] Trend lines and snapshot persistence (v1.8.0).
-- [x] Dependency graph; duplicate block detection (v1.8.0).
-
-## Self-Scan
-
-Current result on scan.root = ".":
-
-  Grade A   TQI 94.9   Issues 0   Duplicate blocks 6
-  Security 100   Robustness 100   Efficiency 100
-  Transferability 88   Changeability 87
-  Files 3   avg_cx 2.3
+- [x] 46-language support, AST via tree-sitter (C/Python/JS/Go/Java/Rust).
+- [x] Quality gate: GET /api/gate; gate.* PSON; exit_nonzero for CI.
+- [x] Post-quantum TLS X25519MLKEM768; OpenSSL 4.0.0 prebuilt.
+- [x] Multi-project support; incremental scanning; mtime cache.
+- [x] License header detection, webhook, watch mode, API key auth.
+- [x] PDF, JSON, CSV exports; Prometheus metrics; trend lines.
+- [x] Dependency graph; duplicate block detection.
+- [x] Rule false-positive tightening (SEC-EVAL, SEC-HARDCODED-SECRET,
+      SEC-SYSTEM-CALL, CHG-MAGIC-PATH, PORT-* guard-aware).
+- [x] Export downloads named from scanned project stem.

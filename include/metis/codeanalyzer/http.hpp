@@ -154,6 +154,17 @@ struct Conn {
 #endif
         if (fd != kInvalidSocket) { close_socket(fd); fd = kInvalidSocket; }
     }
+
+    /* Send all bytes, retrying on partial writes. Returns false on error. */
+    bool send_all(const char* buf, std::size_t len) {
+        while (len > 0) {
+            long sent = send_some(buf, len);
+            if (sent <= 0) return false;
+            buf += sent;
+            len -= static_cast<std::size_t>(sent);
+        }
+        return true;
+    }
 };
 
 } /* namespace detail */
@@ -161,6 +172,9 @@ struct Conn {
 class Server {
 public:
     using Handler = std::function<Response(const Request&)>;
+    /* WebSocket handler: called with the conn and initial request after upgrade.
+     * The handler owns the connection for the lifetime of the WebSocket session. */
+    using WsHandler = std::function<void(detail::Conn&, const Request&)>;
 
     Server(std::string host, int port, std::string static_dir,
            TlsOptions tls = TlsOptions{})
@@ -179,6 +193,12 @@ public:
 
     void route(const std::string& method, const std::string& path, Handler h) {
         routes_[method + " " + path] = std::move(h);
+    }
+
+    /* Register a WebSocket upgrade route. Invoked for GET requests that carry
+     * a valid Upgrade: websocket header on the given path. */
+    void ws_route(const std::string& path, WsHandler h) {
+        ws_routes_[path] = std::move(h);
     }
 
     void set_index_document(const std::string& doc) {
@@ -380,6 +400,22 @@ private:
         req.body = body;
 
         Response res = dispatch(req);
+        /* Check if dispatch returned a WebSocket upgrade (status 101 sentinel). */
+        auto ws_it = ws_routes_.find(req.path);
+        if (req.method == "GET" && ws_it != ws_routes_.end()) {
+            auto upg = req.headers.find("upgrade");
+            if (upg != req.headers.end()) {
+                std::string uval = upg->second;
+                for (char& c : uval) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (uval.find("websocket") != std::string::npos) {
+                    if (ws_upgrade(conn, req)) {
+                        ws_it->second(conn, req); /* hand off to WS handler */
+                    }
+                    conn.close();
+                    return;
+                }
+            }
+        }
         send_response(conn, res);
         conn.close();
     }
@@ -597,6 +633,7 @@ private:
     socket_t listen_fd_ = kInvalidSocket;
     std::atomic<bool> running_{false};
     std::map<std::string, Handler> routes_;
+    std::map<std::string, WsHandler> ws_routes_;
     std::size_t max_header_bytes_ = 1048576;
     int listen_backlog_ = 64;
     std::size_t recv_chunk_bytes_ = 8192;
@@ -607,6 +644,99 @@ private:
     SSL_CTX* ssl_ctx_ = nullptr;
     std::string cert_der_;   /* DER bytes of the current cert, served at /tls/cert.pem */
 #endif
+
+    /* ---- WebSocket helpers (RFC 6455) ---------------------------------- */
+
+    /* SHA-1 used only for the WebSocket handshake accept key (not security). */
+    static std::array<uint8_t,20> ws_sha1(const std::string& data) {
+        uint32_t h[5] = {0x67452301,0xEFCDAB89,0x98BADCFE,0x10325476,0xC3D2E1F0};
+        auto rot = [](uint32_t v,int n){ return (v<<n)|(v>>(32-n)); };
+        std::vector<uint8_t> msg(data.begin(), data.end());
+        uint64_t ml = data.size() * 8;
+        msg.push_back(0x80);
+        while ((msg.size() % 64) != 56) msg.push_back(0x00);
+        for (int i = 7; i >= 0; --i) msg.push_back(static_cast<uint8_t>((ml>>(i*8))&0xFF));
+        for (std::size_t i = 0; i < msg.size(); i += 64) {
+            uint32_t w[80];
+            for (int j=0;j<16;++j)
+                w[j]=(uint32_t(msg[i+j*4])<<24)|(uint32_t(msg[i+j*4+1])<<16)|
+                     (uint32_t(msg[i+j*4+2])<<8)|uint32_t(msg[i+j*4+3]);
+            for (int j=16;j<80;++j) w[j]=rot(w[j-3]^w[j-8]^w[j-14]^w[j-16],1);
+            uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4];
+            for (int j=0;j<80;++j) {
+                uint32_t f,k;
+                if(j<20){f=(b&c)|(~b&d);k=0x5A827999;}
+                else if(j<40){f=b^c^d;k=0x6ED9EBA1;}
+                else if(j<60){f=(b&c)|(b&d)|(c&d);k=0x8F1BBCDC;}
+                else{f=b^c^d;k=0xCA62C1D6;}
+                uint32_t tmp=rot(a,5)+f+e+k+w[j];
+                e=d;d=c;c=rot(b,30);b=a;a=tmp;
+            }
+            h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;
+        }
+        std::array<uint8_t,20> out;
+        for (int i=0;i<5;++i){out[i*4]=(h[i]>>24)&0xFF;out[i*4+1]=(h[i]>>16)&0xFF;
+                               out[i*4+2]=(h[i]>>8)&0xFF;out[i*4+3]=h[i]&0xFF;}
+        return out;
+    }
+
+    static std::string ws_base64(const uint8_t* src, std::size_t len) {
+        static const char t[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string r; r.reserve(((len+2)/3)*4);
+        for (std::size_t i=0;i<len;i+=3) {
+            uint32_t v=(uint32_t(src[i])<<16)|
+                       (i+1<len?uint32_t(src[i+1])<<8:0)|
+                       (i+2<len?uint32_t(src[i+2]):0);
+            r+=t[(v>>18)&63];r+=t[(v>>12)&63];
+            r+=(i+1<len)?t[(v>>6)&63]:'=';
+            r+=(i+2<len)?t[v&63]:'=';
+        }
+        return r;
+    }
+
+public:
+    /* Send a single RFC 6455 text frame (FIN=1, opcode=0x1). */
+    static bool ws_send_text(detail::Conn& conn, const std::string& payload) {
+        std::vector<uint8_t> frame;
+        frame.push_back(0x81); /* FIN + text opcode */
+        std::size_t plen = payload.size();
+        if (plen < 126) {
+            frame.push_back(static_cast<uint8_t>(plen));
+        } else if (plen < 65536) {
+            frame.push_back(126);
+            frame.push_back(static_cast<uint8_t>((plen>>8)&0xFF));
+            frame.push_back(static_cast<uint8_t>(plen&0xFF));
+        } else {
+            frame.push_back(127);
+            for (int i=7;i>=0;--i) frame.push_back(static_cast<uint8_t>((plen>>(i*8))&0xFF));
+        }
+        frame.insert(frame.end(), payload.begin(), payload.end());
+        return conn.send_all(reinterpret_cast<const char*>(frame.data()), frame.size());
+    }
+
+    /* Send RFC 6455 close frame. */
+    static void ws_close(detail::Conn& conn) {
+        uint8_t f[2] = {0x88, 0x00}; /* FIN + close opcode, zero payload */
+        conn.send_all(reinterpret_cast<const char*>(f), 2);
+    }
+
+private:
+    /* Perform WebSocket upgrade handshake. Returns true on success. */
+    static bool ws_upgrade(detail::Conn& conn, const Request& req) {
+        auto it = req.headers.find("sec-websocket-key");
+        if (it == req.headers.end()) return false;
+        const std::string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        std::string accept_src = it->second + magic;
+        auto sha = ws_sha1(accept_src);
+        std::string accept_b64 = ws_base64(sha.data(), sha.size());
+        std::string hs =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: " + accept_b64 + "\r\n\r\n";
+        return conn.send_all(hs.data(), hs.size());
+    }
+
 };
 
 } /* namespace metis::codeanalyzer::http */

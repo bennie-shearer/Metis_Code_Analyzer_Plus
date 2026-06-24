@@ -744,13 +744,61 @@
     });
 
     el("scan").addEventListener("click", function () {
-      var btn = el("scan"); btn.disabled = true; btn.textContent = t("analyzing");
-      api("/api/scan", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: el("root").value || "." })
-      }).then(loadAll).catch(function () { /* non-fatal */ }).finally(function () {
-        btn.disabled = false; btn.textContent = t("analyze");
-      });
+      var btn = el("scan");
+      var prog = el("scanProgress");
+      var label = el("scanProgressLabel");
+      var root = (el("root") && el("root").value) ? el("root").value : ".";
+      btn.disabled = true; btn.textContent = t("analyzing") || "Analyzing...";
+      if (prog) prog.hidden = false;
+
+      /* v2.5.0: Use WebSocket for live scan progress; fall back to POST if WS fails. */
+      var wsProto = (location.protocol === "https:") ? "wss" : "ws";
+      var wsUrl = wsProto + "://" + location.host + "/api/scan/ws?root=" + encodeURIComponent(root);
+      var ws = null;
+      var wsOk = false;
+
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = function () { wsOk = true; };
+        ws.onmessage = function (ev) {
+          try {
+            var msg = JSON.parse(ev.data);
+            if (msg.event === "start") {
+              if (label) label.textContent = "Scanning " + (msg.root || "...") + "...";
+            } else if (msg.event === "progress") {
+              if (label) label.textContent = "Scanned " + (msg.n || "?") + " / " + (msg.total || "?") + " files...";
+            } else if (msg.event === "done") {
+              if (label) label.textContent = msg.files + " files, " + msg.issues + " issues, TQI " + msg.tqi;
+              loadAll();
+              setTimeout(function () {
+                btn.disabled = false; btn.textContent = t("analyze") || "Analyze";
+                if (prog) prog.hidden = true;
+                if (label) label.textContent = "Scanning...";
+              }, 1800);
+            }
+          } catch (e) { /* ignore parse errors */ }
+        };
+        ws.onerror = function () {
+          if (!wsOk) fallbackScan();
+        };
+        ws.onclose = function () {
+          if (!wsOk) fallbackScan();
+        };
+      } catch (e) {
+        fallbackScan();
+      }
+
+      /* Fallback: plain POST /api/scan */
+      function fallbackScan() {
+        if (label) label.textContent = "Scanning (HTTP)...";
+        api("/api/scan", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ root: root })
+        }).then(loadAll).catch(function () { /* non-fatal */ }).finally(function () {
+          btn.disabled = false; btn.textContent = t("analyze") || "Analyze";
+          if (prog) prog.hidden = true;
+        });
+      }
     });
 
     el("shutdown").addEventListener("click", function () {

@@ -6,7 +6,7 @@ info:
     Authentication: session cookie (mcsid) from POST /api/login, or
     X-API-Key header when auth.api_key_enabled is true in the PSON config.
     Endpoints marked [open] require no authentication.
-  version: "2.4.0"
+  version: "2.5.1"
   license:
     name: MIT
 
@@ -48,7 +48,7 @@ paths:
                 type: object
                 properties:
                   product: { type: string }
-                  version: { type: string, example: "2.4.0" }
+                  version: { type: string, example: "2.5.1" }
                   rules:   { type: integer }
 
   /api/health:
@@ -138,6 +138,30 @@ paths:
       responses:
         "200":
           description: Session cleared
+
+  /api/scan/ws:
+    get:
+      tags: [analysis]
+      summary: "WebSocket endpoint for live scan progress (v2.5.0)"
+      description: |
+        Upgrade to a WebSocket connection (RFC 6455). Authentication via
+        session cookie (mcsid) in the upgrade request headers.
+        Messages emitted by the server (JSON text frames):
+          {"event":"start","root":"..."}
+          {"event":"done","files":N,"issues":N,"tqi":N.N}
+        Optional query parameter: ?root=PATH to override scan root.
+        Use wss:// when TLS is enabled, ws:// for plain HTTP builds.
+      parameters:
+        - name: root
+          in: query
+          required: false
+          schema: { type: string }
+          description: Override scan root directory for this scan.
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade)
+        "401":
+          description: Unauthorized (missing or invalid session cookie)
 
   /api/scan:
     post:

@@ -254,6 +254,7 @@ Requires a build with `METIS_ENABLE_TLS=ON` for HTTPS targets.
 | `ui.pdf_max_issues`  | int  | `40`    | Maximum issues listed in the exported PDF report.              |
 | `ui.history_max`     | int  | `100`   | Number of past scan snapshots retained for trend display.      |
 | `ui.history_file`    | string | `""` | Path to a newline-delimited JSON file for persistent history.  |
+| `ui.issue_status_file` | string | `"data/issue_status.ndjson"` | Path to persistent issue lifecycle store (v2.5.0). |
 
 ### arch (architecture rules)
 

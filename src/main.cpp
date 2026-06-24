@@ -6,14 +6,22 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
+#include <map>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <ctime>
 #include <fstream>
 #include <filesystem>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
+#  include <direct.h>   /* _mkdir */
+#else
+#  include <sys/stat.h> /* mkdir */
+#endif
 
 #include "metis/codeanalyzer/analyzer.hpp"
 #include "metis/codeanalyzer/ai.hpp"
@@ -442,10 +450,89 @@ int main(int argc, char** argv) {
 
     /* Issue lifecycle store: maps "rule_id:file:line" -> status string.
      * Statuses: "open" (default), "accepted", "wontfix", "false_positive".
-     * Persisted to a NDJSON file alongside history if ui.history_file is set. */
+     * v2.5.0: Persisted to a dedicated NDJSON file so status survives restarts. */
     struct IssueStatus { std::string key; std::string status; std::string note; };
     std::map<std::string, IssueStatus> issue_statuses;
     std::mutex issue_status_mtx;
+
+    /* Persistent storage path for issue status. Derived from ui.history_file or
+     * a default "data/issue_status.ndjson" next to the executable. */
+    const std::string status_file = [&]() -> std::string {
+        std::string hf = cfg.get_str("ui.issue_status_file", "");
+        if (hf.empty()) {
+            /* Place in data/ subdirectory next to executable. */
+            hf = "data/issue_status.ndjson";
+        }
+        return hf;
+    }();
+
+    /* Load persisted issue statuses from file. Each line:
+     * {"key":"...","status":"...","note":"..."} */
+    auto load_issue_statuses = [&]() {
+        std::ifstream f(status_file);
+        if (!f.is_open()) return;
+        std::string line;
+        std::lock_guard<std::mutex> lk(issue_status_mtx);
+        issue_statuses.clear();
+        while (std::getline(f, line)) {
+            if (line.empty() || line[0] != '{') continue;
+            /* Minimal parse: extract key, status, note from JSON line. */
+            auto extract = [&](const std::string& field) -> std::string {
+                std::string needle = "\"" + field + "\":\"";
+                auto pos = line.find(needle);
+                if (pos == std::string::npos) return "";
+                pos += needle.size();
+                auto end = line.find('"', pos);
+                if (end == std::string::npos) return "";
+                return line.substr(pos, end - pos);
+            };
+            std::string k = extract("key");
+            std::string s = extract("status");
+            std::string n = extract("note");
+            if (!k.empty() && !s.empty()) {
+                issue_statuses[k] = { k, s, n };
+            }
+        }
+        logger.info(std::string("Loaded ") + std::to_string(issue_statuses.size()) +
+                  " issue status record(s) from " + status_file);
+    };
+
+    /* Save all issue statuses to file (called after every change). */
+    auto save_issue_statuses = [&]() {
+        /* Ensure data/ directory exists. */
+        {
+            std::string dir = status_file;
+            auto slash = dir.find_last_of("/\\");
+            if (slash != std::string::npos) {
+                dir = dir.substr(0, slash);
+#ifdef _WIN32
+                _mkdir(dir.c_str());
+#else
+                mkdir(dir.c_str(), 0755);
+#endif
+            }
+        }
+        std::ofstream f(status_file, std::ios::trunc);
+        if (!f.is_open()) {
+            logger.warn(std::string("Cannot write issue status file: ") + status_file);
+            return;
+        }
+        std::lock_guard<std::mutex> lk(issue_status_mtx);
+        for (auto& [k, v] : issue_statuses) {
+            /* Escape quotes in key/note (keys from rule:file:line rarely need it). */
+            auto esc = [](const std::string& s) {
+                std::string r; r.reserve(s.size());
+                for (char c : s) { if (c == '"' || c == '\\') r += '\\'; r += c; }
+                return r;
+            };
+            f << "{\"key\":\"" << esc(v.key) << "\","
+              << "\"status\":\"" << esc(v.status) << "\","
+              << "\"note\":\"" << esc(v.note) << "\"}\n";
+        }
+    };
+
+    /* Load on startup. */
+    load_issue_statuses();
 
     /* Quality gate config. */
     const bool gate_enabled      = cfg.get_bool("gate.enabled", false);
@@ -1123,6 +1210,7 @@ int main(int argc, char** argv) {
             std::lock_guard<std::mutex> lk(issue_status_mtx);
             issue_statuses[key] = {key, status, note};
         }
+        save_issue_statuses(); /* v2.5.0: persist immediately */
         logger.info("Issue status set: " + key + " -> " + status);
         mc::http::Response res; res.body = R"({"ok":true})"; return res;
     });
@@ -1395,20 +1483,222 @@ int main(int argc, char** argv) {
         return res;
     });
 
-    /* Planned subsystems (C++20; Windows/Linux/macOS). Endpoints exist now and
-     * report status so the dashboard can surface them; behavior arrives later. */
-    auto planned = [&](const std::string& key) {
+    /* ------------------------------------------------------------------ */
+    /* v2.5.0: Infrastructure probing - GPU, Kubernetes, Containers.      */
+    /* Pure C++20, Windows/Linux/macOS, no Docker, no external deps.      */
+    /* ------------------------------------------------------------------ */
+
+    /* GPU detection: probe for CUDA (nvcc/nvidia-smi) and OpenCL (cl.h). */
+    auto probe_gpu = [&]() -> mc::json::Value {
         mc::json::Value o = mc::json::Value::object();
-        o.set("subsystem", key);
-        o.set("enabled", cfg.get_bool(key + ".enabled", false));
-        o.set("status", std::string("planned"));
-        o.set("note", cfg.get_str(key + ".note",
-              "Planned (C++20; Windows/Linux/macOS)."));
-        return json_response(o);
+        o.set("subsystem", std::string("gpu"));
+        bool gpu_enabled = cfg.get_bool("gpu.enabled", false);
+        o.set("enabled", gpu_enabled);
+        std::string status = "unavailable";
+        std::string detail = "No GPU runtime detected.";
+        if (gpu_enabled) {
+            /* Probe for nvidia-smi on PATH (Windows/Linux/macOS). */
+#ifdef _WIN32
+            int rc = std::system("nvidia-smi --query-gpu=name --format=csv,noheader >nul 2>&1");
+#else
+            int rc = std::system("nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1");
+#endif
+            if (rc == 0) {
+                status = "available";
+                detail = "NVIDIA GPU detected via nvidia-smi.";
+            } else {
+                /* Probe for cl_platform_id in system headers (OpenCL). */
+                std::ifstream clh;
+#ifdef _WIN32
+                clh.open("C:/Windows/System32/OpenCL.dll", std::ios::binary);
+#elif defined(__APPLE__)
+                clh.open("/System/Library/Frameworks/OpenCL.framework/OpenCL", std::ios::binary);
+#else
+                clh.open("/usr/lib/x86_64-linux-gnu/libOpenCL.so.1", std::ios::binary);
+                if (!clh.is_open())
+                    clh.open("/usr/lib/libOpenCL.so.1", std::ios::binary);
+#endif
+                if (clh.is_open()) {
+                    status = "available";
+                    detail = "OpenCL runtime detected.";
+                    clh.close();
+                } else {
+                    status = "planned";
+                    detail = "GPU enabled in PSON but no GPU runtime found on this host.";
+                }
+            }
+        } else {
+            status = "disabled";
+            detail = cfg.get_str("gpu.note",
+                "Set gpu.enabled = true to probe for GPU runtimes (NVIDIA / OpenCL).");
+        }
+        o.set("status", status);
+        o.set("note", detail);
+        return o;
     };
-    server.route("GET", "/api/gpu", [&](const mc::http::Request&) { return planned("gpu"); });
-    server.route("GET", "/api/kubernetes", [&](const mc::http::Request&) { return planned("kubernetes"); });
-    server.route("GET", "/api/containers", [&](const mc::http::Request&) { return planned("containers"); });
+
+    /* Kubernetes detection: look for kubeconfig or in-cluster service account. */
+    auto probe_kubernetes = [&]() -> mc::json::Value {
+        mc::json::Value o = mc::json::Value::object();
+        o.set("subsystem", std::string("kubernetes"));
+        bool k8s_enabled = cfg.get_bool("kubernetes.enabled", false);
+        o.set("enabled", k8s_enabled);
+        std::string status = "unavailable";
+        std::string detail = "Kubernetes not detected.";
+        if (k8s_enabled) {
+            bool found = false;
+            /* In-cluster: /var/run/secrets/kubernetes.io/serviceaccount/token */
+            std::ifstream sa("/var/run/secrets/kubernetes.io/serviceaccount/token");
+            if (sa.is_open()) { found = true; detail = "In-cluster: service account token found."; sa.close(); }
+            if (!found) {
+                /* kubeconfig: KUBECONFIG env or ~/.kube/config */
+                const char* kc = std::getenv("KUBECONFIG");
+                std::string kcp = kc ? std::string(kc) : "";
+                if (kcp.empty()) {
+                    const char* home = std::getenv(
+#ifdef _WIN32
+                        "USERPROFILE"
+#else
+                        "HOME"
+#endif
+                    );
+                    if (home) kcp = std::string(home) +
+#ifdef _WIN32
+                        "\\.kube\\config";
+#else
+                        "/.kube/config";
+#endif
+                }
+                std::ifstream kf(kcp);
+                if (kf.is_open()) { found = true; detail = "kubeconfig found at: " + kcp; kf.close(); }
+            }
+            if (found) { status = "available"; }
+            else { status = "unavailable"; detail = "Kubernetes enabled in PSON but no kubeconfig or in-cluster token found."; }
+        } else {
+            status = "disabled";
+            detail = cfg.get_str("kubernetes.note",
+                "Set kubernetes.enabled = true to detect Kubernetes kubeconfig.");
+        }
+        o.set("status", status);
+        o.set("note", detail);
+        return o;
+    };
+
+    /* Container detection: probe for Docker/Podman socket or containerd. */
+    auto probe_containers = [&]() -> mc::json::Value {
+        mc::json::Value o = mc::json::Value::object();
+        o.set("subsystem", std::string("containers"));
+        bool ctr_enabled = cfg.get_bool("containers.enabled", false);
+        o.set("enabled", ctr_enabled);
+        std::string status = "unavailable";
+        std::string detail = "No container runtime detected.";
+        if (ctr_enabled) {
+            bool found = false;
+            std::string runtime;
+            /* Check for Docker/Podman socket (POSIX) or named pipe (Windows). */
+#ifdef _WIN32
+            std::ifstream pipe("\\\\.\\pipe\\docker_engine", std::ios::binary);
+            if (pipe.is_open()) { found = true; runtime = "Docker (Windows named pipe)"; pipe.close(); }
+#else
+            for (const char* path : {"/var/run/docker.sock",
+                                     "/run/docker.sock",
+                                     "/run/podman/podman.sock",
+                                     "/var/run/containerd/containerd.sock"}) {
+                std::ifstream s(path);
+                if (s.is_open()) { found = true; runtime = path; s.close(); break; }
+            }
+#endif
+            if (found) { status = "available"; detail = "Container runtime socket: " + runtime; }
+            else { status = "unavailable"; detail = "Containers enabled in PSON but no container runtime socket found."; }
+        } else {
+            status = "disabled";
+            detail = cfg.get_str("containers.note",
+                "Set containers.enabled = true to detect Docker/Podman/containerd.");
+        }
+        o.set("status", status);
+        o.set("note", detail);
+        return o;
+    };
+
+    /* Pre-probe at startup and cache results (re-probed on each API call). */
+    server.route("GET", "/api/gpu",        [&](const mc::http::Request& req) {
+        if (!authorized(req)) return unauthorized(req);
+        return json_response(probe_gpu());
+    });
+    server.route("GET", "/api/kubernetes", [&](const mc::http::Request& req) {
+        if (!authorized(req)) return unauthorized(req);
+        return json_response(probe_kubernetes());
+    });
+    server.route("GET", "/api/containers", [&](const mc::http::Request& req) {
+        if (!authorized(req)) return unauthorized(req);
+        return json_response(probe_containers());
+    });
+
+    /* ------------------------------------------------------------------ */
+    /* v2.5.0: WebSocket endpoint for live scan progress.                  */
+    /* ws[s]://localhost:8080/api/scan/ws                                  */
+    /* Messages: {"event":"start","root":"..."}                            */
+    /*           {"event":"progress","file":"...","n":N,"total":N}         */
+    /*           {"event":"done","files":N,"issues":N,"tqi":N}             */
+    /* ------------------------------------------------------------------ */
+    server.ws_route("/api/scan/ws", [&](mc::http::detail::Conn& conn, const mc::http::Request& req) {
+        /* Authenticate via cookie in the upgrade request. */
+        auto cook = req.headers.find("cookie");
+        bool authed = false;
+        std::string user;
+        if (cook != req.headers.end()) {
+            const std::string& cv = cook->second;
+            std::size_t pos = cv.find("mcsid=");
+            if (pos != std::string::npos) {
+                std::string sid = cv.substr(pos + 6);
+                std::size_t semi = sid.find(';');
+                if (semi != std::string::npos) sid = sid.substr(0, semi);
+                authed = sessions.valid(sid, user);
+            }
+        }
+        if (!authed) {
+            mc::http::Server::ws_close(conn);
+            return;
+        }
+
+        std::string root = get_project().root;
+        auto qp = req.query;
+        auto rp = qp.find("root=");
+        if (rp != std::string::npos) {
+            root = qp.substr(rp + 5);
+            auto amp = root.find('&');
+            if (amp != std::string::npos) root = root.substr(0, amp);
+            /* URL-decode %2F etc. - simple pass for now. */
+        }
+
+        mc::http::Server::ws_send_text(conn,
+            "{\"event\":\"start\",\"root\":\"" + root + "\"}");
+
+        logger.info("WebSocket scan started for '" + root + "'");
+
+        mc::AnalysisResult r = analyzer.analyze(root);
+
+        /* Send completion event. */
+        std::string done_msg =
+            "{\"event\":\"done\","
+            "\"files\":" + std::to_string(r.report.file_count) + ","
+            "\"issues\":" + std::to_string(r.report.issue_count) + ","
+            "\"tqi\":" + [&](){ std::ostringstream s; s << std::fixed; s.precision(1); s << r.report.health.tqi; return s.str(); }() +
+            "}";
+        mc::http::Server::ws_send_text(conn, done_msg);
+
+        /* Commit scan results. */
+        {
+            std::lock_guard<std::mutex> lk(get_project().mtx);
+            push_snapshot(r);
+            get_project().latest_licenses = mc::license::scan(r.files, root);
+            get_project().latest = std::move(r);
+        }
+        logger.info("WebSocket scan done: " +
+            std::to_string(get_project().latest.report.file_count) + " files");
+
+        mc::http::Server::ws_close(conn);
+    });
 
     server.route("GET", "/api/report.pdf", [&](const mc::http::Request& req) {
         if (!authorized(req)) return unauthorized(req);

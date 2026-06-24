@@ -1,6 +1,6 @@
 # Metis Code Analyzer Plus
 
-Version 2.4.2
+Version 2.5.1
 
 Application intelligence and static code analysis for source trees. Metis Code
 Analyzer Plus scans a codebase and reports quality metrics, technical debt,
@@ -139,7 +139,8 @@ Highlights:
 | GET    | /api/results           | Latest analysis report             |
 | GET    | /api/files             | Per-file metrics                   |
 | GET    | /api/issues            | Issue list (filterable)            |
-| POST   | /api/scan              | Trigger a scan                     |
+| GET/WS | /api/scan/ws           | Live scan progress (WebSocket)     |
+| POST   | /api/scan              | Trigger a scan (HTTP fallback)     |
 | GET    | /api/report.pdf        | PDF quality report                 |
 | GET    | /api/report.json       | Full JSON export                   |
 | GET    | /api/report.csv        | Issues CSV export                  |

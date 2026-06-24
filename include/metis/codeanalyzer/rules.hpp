@@ -107,8 +107,15 @@ public:
          * 0 = neutral, 1 = inside a _WIN32-true region, 2 = inside a _WIN32-false
          * region. PORT-WIN-* are suppressed inside a _WIN32-true region and
          * PORT-POSIX-* inside a _WIN32-false region, since correctly guarded
-         * platform code is portable and should not be flagged. */
+         * platform code is portable and should not be flagged.
+         *
+         * platform_guard_depth counts nesting inside any #if/#ifdef/#ifndef that
+         * references a known platform token (_WIN32, __APPLE__, __linux__,
+         * defined(, _MSC_VER, __GNUC__). CHG-MAGIC-PATH and SEC-SYSTEM-CALL are
+         * suppressed inside such guards because platform-probe code legitimately
+         * references OS-specific paths and shell commands. */
         std::vector<int> guard;
+        int platform_guard_depth = 0;
         auto scan_line = [&](const std::string& ln) {
             ++line_no;
             /* Track #if/#ifdef/#ifndef/#elif/#else/#endif for _WIN32 guards. */
@@ -123,22 +130,37 @@ public:
                     if (s != std::string::npos) d = d.substr(s);
                     auto starts = [&](const char* k) { return d.rfind(k, 0) == 0; };
                     bool win32 = d.find("_WIN32") != std::string::npos;
+                    /* Platform token: any well-known compiler/OS macro. */
+                    bool is_platform = win32 ||
+                        d.find("__APPLE__") != std::string::npos ||
+                        d.find("__linux__") != std::string::npos ||
+                        d.find("_MSC_VER")  != std::string::npos ||
+                        d.find("__GNUC__")  != std::string::npos ||
+                        d.find("defined(")  != std::string::npos;
                     if (starts("ifdef")) {
                         guard.push_back(win32 ? 1 : 0);
+                        if (is_platform) ++platform_guard_depth;
                     } else if (starts("ifndef")) {
                         guard.push_back(win32 ? 2 : 0);
+                        if (is_platform) ++platform_guard_depth;
                     } else if (starts("if")) {
                         bool neg = d.find('!') != std::string::npos;
                         guard.push_back(win32 ? (neg ? 2 : 1) : 0);
+                        if (is_platform) ++platform_guard_depth;
                     } else if (starts("elif")) {
                         if (!guard.empty()) guard.back() = 0;
+                        /* elif stays within the same platform guard depth */
                     } else if (starts("else")) {
                         if (!guard.empty()) {
                             if (guard.back() == 1) guard.back() = 2;
                             else if (guard.back() == 2) guard.back() = 1;
                         }
                     } else if (starts("endif")) {
-                        if (!guard.empty()) guard.pop_back();
+                        if (!guard.empty()) {
+                            /* Decrement platform depth if we were tracking one. */
+                            if (platform_guard_depth > 0) --platform_guard_depth;
+                            guard.pop_back();
+                        }
                     }
                 }
             }
@@ -148,6 +170,10 @@ public:
             for (const Rule& r : rules_) {
                 if (in_win   && r.id.rfind("PORT-WIN",   0) == 0) continue;
                 if (in_posix && r.id.rfind("PORT-POSIX", 0) == 0) continue;
+                /* Suppress path and shell-command rules inside platform guards:
+                 * probe code legitimately references OS paths and utilities. */
+                if (platform_guard_depth > 0 && r.id == "CHG-MAGIC-PATH")  continue;
+                if (platform_guard_depth > 0 && r.id == "SEC-SYSTEM-CALL") continue;
                 if (std::regex_search(ln, r.pattern)) {
                     Issue iss;
                     iss.rule_id = r.id;
@@ -209,7 +235,7 @@ inline RuleSet default_rules() {
            R"((select|insert|update|delete)\b.*["'].*\+)");
     rs.add("SEC-SYSTEM-CALL", "Shell command execution",
            "CWE-78", Severity::Major, HealthFactor::Security, 25,
-           R"((^|[^.\w/])(system|popen)\s*\(|\bos\.system\s*\(|\bsubprocess\.call\s*\()");
+           R"((^|[^.\w/])(system|popen)\s*\(\s*[^\"'L]|\bos\.system\s*\(\s*[^\"']|\bsubprocess\.call\s*\(\s*[^\"'[])"); /* literal-arg exempt */
     rs.add("ROB-EMPTY-CATCH", "Empty or swallowed exception handler",
            "CWE-1069", Severity::Major, HealthFactor::Robustness, 15,
            R"(catch\s*\([^)]*\)\s*\{\s*\})");

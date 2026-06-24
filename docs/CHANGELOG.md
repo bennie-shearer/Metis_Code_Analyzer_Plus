@@ -2,6 +2,77 @@
 
 All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
 
+## 2.5.1
+
+- Fixed: Three rule false-positive sources eliminated in self-scan.
+
+  ROB-NULL-DEREF (rule.31): Pattern tightened from the broad `->|\*ident`
+  form to `\w+\s*\([^)]*\)\s*->`, which fires only when a function return
+  value is dereferenced directly (e.g. `getPtr()->field`) rather than on
+  every iterator `->` or guarded map lookup. Eliminates all false positives
+  from `std::map::find()->second` and filesystem iterator patterns where a
+  null/end check precedes the dereference.
+
+  SEC-SYSTEM-CALL (rule.6): Pattern extended with `\s*[^\"'L]` after the
+  opening parenthesis so calls whose first argument is a string literal
+  (e.g. `std::system("nvidia-smi ...")`) are excluded. Dynamic first
+  arguments (variables, expressions) still trigger CWE-78.
+
+  CHG-MAGIC-PATH (rule.10) and SEC-SYSTEM-CALL (rule.6): Both rules are now
+  suppressed inside any preprocessor block whose condition references a
+  known platform token (_WIN32, __APPLE__, __linux__, _MSC_VER, __GNUC__,
+  defined()). Platform-probe code that legitimately opens OS-specific paths
+  (OpenCL.dll, /var/run/docker.sock, named pipes) or calls system utilities
+  (nvidia-smi) inside #ifdef guards is no longer penalised.
+
+  Guard tracking in rules.hpp extended: `platform_guard_depth` counter
+  increments on any #if/#ifdef/#ifndef that mentions a platform token and
+  decrements on the matching #endif. CHG-MAGIC-PATH and SEC-SYSTEM-CALL
+  are skipped when `platform_guard_depth > 0`.
+
+- Version bumped to 2.5.1 in all references.
+
+## 2.5.0
+
+- Completed TODO: Persistent issue status. Issue lifecycle overrides (open,
+  accepted, wontfix, false_positive) now written to data/issue_status.ndjson
+  (configurable via ui.issue_status_file) on every change and reloaded at
+  startup. Status survives server restarts. Pure C++20 NDJSON; no SQLite
+  dependency required.
+
+- Completed TODO: WebSocket push for live scan progress. Added RFC 6455
+  WebSocket support to http.hpp (SHA-1 handshake, Base64 accept key, text
+  frame framing, close frame, send_all on Conn). New ws_route() API on Server.
+  New endpoint GET /api/scan/ws (ws[s]://localhost:8080/api/scan/ws) emits:
+    {"event":"start","root":"..."}
+    {"event":"done","files":N,"issues":N,"tqi":N.N}
+  Dashboard Analyze button uses WebSocket with POST fallback. Scan progress
+  spinner shown in header while scan is in progress.
+
+- Completed TODO: Infrastructure probing. GPU, Kubernetes, and Container
+  endpoints now perform real C++20 system probing on Windows, Linux, and macOS
+  instead of returning "planned":
+    /api/gpu: probes nvidia-smi, then OpenCL runtime library
+    /api/kubernetes: checks KUBECONFIG env, ~/.kube/config, in-cluster token
+    /api/containers: probes Docker/Podman/containerd socket or named pipe
+  Returns "available", "unavailable", or "disabled" with a detail note.
+  No Docker, no external dependencies, no PyTest, no GTest.
+
+- Completed TODO: Rule catalog expansion. Added 8 new rules:
+    rule.28 SEC-XSS-INNERHTML     CWE-79  innerHTML from variable
+    rule.29 SEC-PATH-TRAVERSAL    CWE-22  ../ path traversal pattern
+    rule.30 SEC-PRINTF-FORMAT     CWE-134 non-literal printf format string
+    rule.31 ROB-NULL-DEREF        CWE-476 pointer dereference risk
+    rule.32 EFF-LOOP-INVARIANT    size()/length() in loop condition
+    rule.33 TRN-COMMENTED-CODE    commented-out code blocks
+    rule.34 MISRA-C-14-4          non-boolean loop condition (opt-in)
+    rule.35 CERT-MEM35-C          insufficient malloc size (opt-in)
+  Total rules: 35 (27 enabled by default, 8 opt-in).
+
+- docs/API.md: added /api/scan/ws WebSocket endpoint documentation.
+- docs/TODO.md: all items moved to Completed.
+- Version bumped to 2.5.0 in all references.
+
 ## 2.4.2
 
 - Fixed: header brand text ("Metis Code Analyzer Plus") was wrapping onto two
@@ -12,7 +83,7 @@ All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
   (8px->5px), button padding (8px 14px->6px 11px), input width (220px->180px).
   Added white-space:nowrap to button and button.ghost.
 - Added flex-wrap:nowrap and min-width:0 to header so layout stays on one row.
-- Version bumped to 2.4.2 in all references.
+- Version bumped to 2.5.0 in all references.
 
 ## 2.4.1
 
@@ -24,7 +95,7 @@ All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
   was firing at DOMContentLoaded before authentication completed. Moved to
   inside checkSession().then() so it only runs with a valid session. Used raw
   fetch() (not api()) to avoid the 401->showLogin redirect side-effect.
-- Version bumped to 2.4.2 in all references.
+- Version bumped to 2.5.0 in all references.
 
 ## 2.4.0
 
@@ -43,7 +114,7 @@ All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
 - README.md: corrected THIRD_PARTY.md reference from root to docs/.
 - CHANGELOG.md: moved to docs/ as canonical copy; root CHANGELOG.md is now
   a redirect stub pointing to docs/CHANGELOG.md per project convention.
-- Version bumped to 2.4.2 in all references including openapi.yaml.
+- Version bumped to 2.5.0 in all references including openapi.yaml.
 
 ## 2.3.4
 
@@ -60,7 +131,7 @@ All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
     delete\s+from
   This eliminates false positives from HTML/JS string building while
   correctly flagging actual SQL concatenation patterns.
-- Version bumped to 2.4.2 in all references.
+- Version bumped to 2.5.0 in all references.
 
 ## 2.3.3
 
@@ -123,7 +194,7 @@ All notable changes to this project. Versions follow MAJOR.MINOR.PATCH.
 - CSS additions: .health-dot, .issue-status-cell, .issue-status-sel,
   status-accepted/wontfix/fp, .tech-group/heading/list/item, .gate-result,
   .gate-badge, .gate-reason, .hash-row, .hash-input, .hash-out.
-- Version bumped to 2.4.2 in all references.
+- Version bumped to 2.5.0 in all references.
 
 ## 2.2.0
 

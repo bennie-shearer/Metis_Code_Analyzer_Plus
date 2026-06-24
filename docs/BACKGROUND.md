@@ -37,7 +37,7 @@ follows the suite conventions: pure C++20, zero external server dependencies,
 PSON configuration, 7-bit ASCII source, and a single self-contained binary.
 Targets Windows, Linux, and macOS.
 
-Version: 2.4.2. Port: 8080 (configurable via the top-level `port` key in
+Version: 2.5.1. Port: 8080 (configurable via the top-level `port` key in
 `code_analyzer.pson`).
 
 ---

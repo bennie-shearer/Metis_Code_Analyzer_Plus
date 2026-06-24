@@ -549,3 +549,15 @@ tr.clickable:hover td { background: rgba(63, 208, 201, 0.07); }
   word-break: break-all; min-height: 20px;
   padding: 4px 0;
 }
+
+/* ---- v2.5.0: Scan progress indicator ---------------------------------- */
+.scan-progress {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+}
+.scan-spinner {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

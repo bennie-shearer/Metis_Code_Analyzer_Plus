@@ -15,7 +15,7 @@ security issues.
 
 Open an issue with:
 
-- Product and version (e.g. Metis Code Analyzer Plus 2.4.2).
+- Product and version (e.g. Metis Code Analyzer Plus 2.5.0).
 - Operating system and compiler (e.g. Windows, MinGW-w64 GCC 13).
 - The scan root and a description of the codebase size.
 - Steps to reproduce, expected vs. actual behavior.

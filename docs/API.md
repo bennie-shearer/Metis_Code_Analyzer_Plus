@@ -1,6 +1,6 @@
 # Metis Code Analyzer Plus - REST API
 
-Version 2.4.2. All responses are JSON unless noted. The server listens on
+Version 2.5.1. All responses are JSON unless noted. The server listens on
 `server.host` and `port` from `code_analyzer.pson` (default `0.0.0.0:8080`).
 
 ---
@@ -12,7 +12,7 @@ Version 2.4.2. All responses are JSON unless noted. The server listens on
 Product name, version, rule count, and active rule count.
 
 ```json
-{ "product": "Metis Code Analyzer Plus", "version": "2.4.2",
+{ "product": "Metis Code Analyzer Plus", "version": "2.5.1",
   "rules": 20, "rules_active": 14 }
 ```
 
@@ -125,10 +125,26 @@ AI settings; the API key is never included.
 
 ## Scanning
 
+### GET /api/scan/ws (WebSocket) — v2.5.0
+
+Live scan progress via WebSocket (RFC 6455). Upgrade with `wss://` (TLS) or
+`ws://` (plain HTTP). Authentication via `mcsid` session cookie in the upgrade
+request. Optional query parameter `?root=PATH` overrides the scan root.
+
+Server emits JSON text frames:
+
+```json
+{"event":"start","root":"/path/to/source"}
+{"event":"done","files":17,"issues":0,"tqi":98.8}
+```
+
+The dashboard Analyze button uses this endpoint automatically and falls back
+to `POST /api/scan` if WebSocket is unavailable.
+
 ### POST /api/scan
 
-Trigger a scan. Body: `{ "root": "/path/to/source" }` (optional; defaults to
-current scan root). Returns the analysis report JSON on completion.
+Trigger a scan (HTTP fallback). Body: `{ "root": "/path/to/source" }` (optional;
+defaults to current scan root). Returns the analysis report JSON on completion.
 
 ### GET /api/results
 
@@ -183,6 +199,11 @@ Returns source lines around the given file and line for the inline preview.
 ---
 
 ## Issue Lifecycle
+
+Issue status overrides persist across server restarts (v2.5.0). Status is
+written to `data/issue_status.ndjson` (configurable via `ui.issue_status_file`
+in `code_analyzer.pson`) on every `POST /api/issue/status` call and reloaded
+at startup.
 
 ### GET /api/issue/status?key=RULE:FILE:LINE
 

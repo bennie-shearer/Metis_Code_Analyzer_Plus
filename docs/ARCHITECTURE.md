@@ -1,6 +1,6 @@
 # Metis Code Analyzer Plus - Architecture
 
-Version 2.4.0
+Version 2.5.1
 
 ## Overview
 

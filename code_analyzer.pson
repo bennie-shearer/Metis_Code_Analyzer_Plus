@@ -341,7 +341,7 @@ rule.6.cwe = "CWE-78"
 rule.6.severity = "major"
 rule.6.factor = "security"
 rule.6.minutes = 25
-rule.6.pattern = "(^|[^.\w/])(system|popen)\s*\(|\bos\.system\s*\(|\bsubprocess\.call\s*\("
+rule.6.pattern = "(^|[^.\w/])(system|popen)\s*\(\s*[^\"\'L]|\bos\.system\s*\(\s*[^\"\']|\bsubprocess\.call\s*\(\s*[^\"\'[]"
 
 rule.7.id = "ROB-EMPTY-CATCH"
 rule.7.title = "Empty or swallowed exception handler"
@@ -573,3 +573,78 @@ rule.27.pattern = "\bMAX_PATH\b"
 
 # Portability scoring scale (higher = more sensitive to issues per KLOC)
 score.scale.portability = 8.0
+
+# v2.5.0: Expanded rule catalog - MISRA-C, CERT-C, and CWE additions
+# Rules 28-35. Enabled by default; adjust per-project in PSON.
+
+rule.28.id = "SEC-XSS-INNERHTML"
+rule.28.title = "Direct innerHTML assignment from variable (XSS risk)"
+rule.28.cwe = "CWE-79"
+rule.28.severity = "major"
+rule.28.factor = "security"
+rule.28.minutes = 20
+rule.28.enabled = true
+rule.28.pattern = "\.innerHTML\s*=\s*[^\"'`]"
+
+rule.29.id = "SEC-PATH-TRAVERSAL"
+rule.29.title = "Unsanitized path component used in file operation (path traversal)"
+rule.29.cwe = "CWE-22"
+rule.29.severity = "critical"
+rule.29.minutes = 45
+rule.29.factor = "security"
+rule.29.enabled = true
+rule.29.pattern = "\.\.(\/|\\\\)\.\."
+
+rule.30.id = "SEC-PRINTF-FORMAT"
+rule.30.title = "printf-family call with non-literal format string (CWE-134)"
+rule.30.cwe = "CWE-134"
+rule.30.severity = "major"
+rule.30.factor = "security"
+rule.30.minutes = 25
+rule.30.enabled = true
+rule.30.pattern = "\b(printf|fprintf|sprintf|snprintf)\s*\(\s*[a-zA-Z_]"
+
+rule.31.id = "ROB-NULL-DEREF"
+rule.31.title = "Pointer dereference without null check nearby (CWE-476)"
+rule.31.cwe = "CWE-476"
+rule.31.severity = "major"
+rule.31.factor = "robustness"
+rule.31.minutes = 20
+rule.31.enabled = true
+rule.31.pattern = "\w+\s*\([^)]*\)\s*->"
+
+rule.32.id = "EFF-LOOP-INVARIANT"
+rule.32.title = "Function call with no side effects inside loop condition"
+rule.32.cwe = ""
+rule.32.severity = "minor"
+rule.32.factor = "efficiency"
+rule.32.minutes = 10
+rule.32.enabled = true
+rule.32.pattern = "for\s*\([^;]*;\s*[a-zA-Z_][a-zA-Z0-9_]*\.(size|length|count|len)\s*\(\s*\)\s*[<>;]"
+
+rule.33.id = "TRN-COMMENTED-CODE"
+rule.33.title = "Large commented-out code block (reduces transferability)"
+rule.33.cwe = ""
+rule.33.severity = "minor"
+rule.33.factor = "transferability"
+rule.33.minutes = 5
+rule.33.enabled = true
+rule.33.pattern = "//\s*(if|for|while|switch|return|int|void|auto|const)\b"
+
+rule.34.id = "MISRA-C-14-4"
+rule.34.title = "Non-boolean expression used as loop condition (MISRA-C 14.4)"
+rule.34.cwe = ""
+rule.34.severity = "minor"
+rule.34.factor = "robustness"
+rule.34.minutes = 10
+rule.34.enabled = false
+rule.34.pattern = "while\s*\(\s*(--[a-zA-Z_]|[a-zA-Z_][a-zA-Z0-9_]*--)\s*\)"
+
+rule.35.id = "CERT-MEM35-C"
+rule.35.title = "Insufficient memory allocated for object type (CERT MEM35-C)"
+rule.35.cwe = "CWE-131"
+rule.35.severity = "major"
+rule.35.factor = "robustness"
+rule.35.minutes = 30
+rule.35.enabled = false
+rule.35.pattern = "malloc\s*\(\s*sizeof\s*\(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\*\s*\)"
