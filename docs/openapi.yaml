@@ -1,0 +1,815 @@
+openapi: "3.0.3"
+info:
+  title: Metis Code Analyzer Plus
+  description: |
+    Application intelligence and static code analysis REST API.
+    Authentication: session cookie (mcsid) from POST /api/login, or
+    X-API-Key header when auth.api_key_enabled is true in the PSON config.
+    Endpoints marked [open] require no authentication.
+  version: "2.4.0"
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Default local server (HTTP)
+  - url: https://localhost:8080
+    description: TLS build (HTTPS)
+
+tags:
+  - name: identity
+    description: Version and session information
+  - name: auth
+    description: Login and logout
+  - name: scan
+    description: Trigger and retrieve analysis results
+  - name: export
+    description: Download reports in various formats
+  - name: config
+    description: Runtime configuration
+  - name: logs
+    description: Activity log
+  - name: platform
+    description: Planned GPU/Kubernetes/Container subsystems
+  - name: observability
+    description: Health and Prometheus metrics
+
+paths:
+  /api/version:
+    get:
+      tags: [identity]
+      summary: Product version and rule count [open]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  product: { type: string }
+                  version: { type: string, example: "2.4.0" }
+                  rules:   { type: integer }
+
+  /api/health:
+    get:
+      tags: [observability]
+      summary: Liveness probe [open]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/security:
+    get:
+      tags: [identity]
+      summary: TLS and post-quantum key-exchange status for this connection [open]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tls:            { type: boolean }
+                  tls_configured: { type: boolean }
+                  group:          { type: string }
+                  cipher:         { type: string }
+                  post_quantum:   { type: boolean }
+                  aes_256_gcm:    { type: boolean }
+                  detail:         { type: string }
+
+  /api/session:
+    get:
+      tags: [auth]
+      summary: Check whether the current session is valid [open]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:       { type: boolean }
+                  username: { type: string }
+
+  /api/login:
+    post:
+      tags: [auth]
+      summary: Authenticate and receive a session cookie [open]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Authenticated; Set-Cookie mcsid issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401":
+          description: Invalid credentials
+        "429":
+          description: Too many failed attempts
+          headers:
+            Retry-After: { schema: { type: integer } }
+
+  /api/logout:
+    post:
+      tags: [auth]
+      summary: Invalidate the current session
+      security: [{ cookie: [] }]
+      responses:
+        "200":
+          description: Session cleared
+
+  /api/scan:
+    post:
+      tags: [scan]
+      summary: Trigger a new analysis scan
+      security: [{ cookie: [] }, { apiKey: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root: { type: string, description: "Directory to scan (default: configured scan.root)" }
+      responses:
+        "200":
+          description: Scan complete; returns the new report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/results:
+    get:
+      tags: [scan]
+      summary: Latest scan report summary
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/history:
+    get:
+      tags: [scan]
+      summary: Scan history snapshots for trend charts
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Array of snapshots, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/files:
+    get:
+      tags: [scan]
+      summary: Per-file metrics from the latest scan
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Array of file records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileRecord"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/issues:
+    get:
+      tags: [scan]
+      summary: All issues from the latest scan
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Array of issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Issue"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/source:
+    get:
+      tags: [scan]
+      summary: Inline source preview around a specific line
+      security: [{ cookie: [] }, { apiKey: [] }]
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+          description: File path relative to the scan root
+        - name: line
+          in: query
+          schema: { type: integer }
+          description: Focal line number (context window is +/- 4 lines)
+      responses:
+        "200":
+          description: Lines around the requested position
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  line: { type: integer }
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        n:    { type: integer }
+                        text: { type: string }
+        "400":
+          description: Missing path parameter
+        "403":
+          description: Path is outside the scan root
+        "404":
+          description: File not found
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/licenses:
+    get:
+      tags: [scan]
+      summary: License header detection results
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: License summary across scanned files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files_with_header:    { type: integer }
+                  files_without_header: { type: integer }
+                  spdx:
+                    type: object
+                    additionalProperties: { type: integer }
+                    description: SPDX expression to count map
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:          { type: string }
+                        spdx:          { type: string }
+                        has_copyright: { type: boolean }
+                        has_header:    { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/report.pdf:
+    get:
+      tags: [export]
+      summary: Download the latest scan as a PDF report
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: PDF file download
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/report.json:
+    get:
+      tags: [export]
+      summary: Download full structured JSON report (metrics + files + issues)
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: JSON file download
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report:  { $ref: "#/components/schemas/Report" }
+                  files:   { type: array, items: { $ref: "#/components/schemas/FileRecord" } }
+                  issues:  { type: array, items: { $ref: "#/components/schemas/Issue" } }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/report.csv:
+    get:
+      tags: [export]
+      summary: Download issues as CSV (severity, rule_id, cwe, file, line, title, minutes)
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/ai/summarize:
+    post:
+      tags: [scan]
+      summary: Request an AI summary of the latest report
+      description: |
+        Requires ai.enabled = true and a TLS-enabled build. Calls the
+        configured provider endpoint with the top issues and health scores.
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: OK (check ok field; errors are surfaced inline)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:       { type: boolean }
+                  status:   { type: integer }
+                  error:    { type: string }
+                  response: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/config:
+    get:
+      tags: [config]
+      summary: Runtime configuration visible to the dashboard [open]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scan_root:      { type: string }
+                  default_locale: { type: string }
+                  max_table_rows: { type: integer }
+                  ai_enabled:     { type: boolean }
+                  auth_required:  { type: boolean }
+                  locales:        { type: array, items: { type: string } }
+
+  /api/languages:
+    get:
+      tags: [config]
+      summary: Supported languages and their file extensions [open]
+      responses:
+        "200":
+          description: Array of language descriptors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:       { type: string }
+                    extensions: { type: array, items: { type: string } }
+
+  /api/logs:
+    get:
+      tags: [logs]
+      summary: Recent activity log entries
+      security: [{ cookie: [] }, { apiKey: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer }
+          description: Maximum entries to return (default log.default_limit)
+      responses:
+        "200":
+          description: Array of log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    timestamp: { type: string, format: date-time }
+                    level:     { type: string, enum: [DEBUG, INFO, WARN, ERROR] }
+                    message:   { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/logs/clear:
+    post:
+      tags: [logs]
+      summary: Clear the in-memory log ring buffer
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Cleared
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/gpu:
+    get:
+      tags: [platform]
+      summary: GPU subsystem status (planned)
+      responses:
+        "200":
+          description: Status object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedStatus" }
+
+  /api/kubernetes:
+    get:
+      tags: [platform]
+      summary: Kubernetes subsystem status (planned)
+      responses:
+        "200":
+          description: Status object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedStatus" }
+
+  /api/containers:
+    get:
+      tags: [platform]
+      summary: Containers subsystem status (planned)
+      responses:
+        "200":
+          description: Status object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedStatus" }
+
+  /api/gate:
+    get:
+      tags: [analysis]
+      summary: Quality gate result
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Gate evaluation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:      { type: boolean }
+                  passed:       { type: boolean }
+                  reason:       { type: string }
+                  tqi:          { type: number }
+                  issues:       { type: integer }
+                  critical:     { type: integer }
+                  min_tqi:      { type: number }
+                  max_issues:   { type: integer }
+                  max_critical: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/technologies:
+    get:
+      tags: [analysis]
+      summary: Detected frameworks and libraries
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Array of detected technologies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:       { type: string }
+                    category:   { type: string }
+                    file_count: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/issue/status:
+    get:
+      tags: [analysis]
+      summary: Get lifecycle status for one issue
+      security: [{ cookie: [] }, { apiKey: [] }]
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: "Issue key: rule_id:file:line (URL-encoded)"
+          schema: { type: string }
+      responses:
+        "200":
+          description: Issue status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:    { type: string }
+                  status: { type: string, enum: [open, accepted, wontfix, false_positive] }
+                  note:   { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [analysis]
+      summary: Set lifecycle status for one issue
+      security: [{ cookie: [] }, { apiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, status]
+              properties:
+                key:    { type: string }
+                status: { type: string, enum: [open, accepted, wontfix, false_positive] }
+                note:   { type: string }
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/hash-password:
+    get:
+      tags: [auth]
+      summary: SHA-256 hash of a password value [open]
+      parameters:
+        - name: password
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: SHA-256 hex digest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sha256: { type: string }
+    post:
+      tags: [auth]
+      summary: SHA-256 hash of a password value (body) [open]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "200":
+          description: SHA-256 hex digest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sha256: { type: string }
+
+  /api/browse:
+    get:
+      tags: [analysis]
+      summary: List subdirectories of a path for the scan-root browser
+      security: [{ cookie: [] }, { apiKey: [] }]
+      parameters:
+        - name: path
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:   { type: string }
+                  parent: { type: string }
+                  dirs:   { type: array, items: { type: string } }
+                  drives: { type: array, items: { type: string }, description: "Windows only" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/projects:
+    get:
+      tags: [analysis]
+      summary: Named project list
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Array of projects (empty when using implicit single-project mode)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:   { type: string }
+                    root:   { type: string }
+                    active: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/project/select:
+    post:
+      tags: [analysis]
+      summary: Switch active project
+      security: [{ cookie: [] }, { apiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: Project switched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/shutdown:
+    post:
+      tags: [observability]
+      summary: Gracefully stop the server
+      security: [{ cookie: [] }, { apiKey: [] }]
+      responses:
+        "200":
+          description: Shutdown initiated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /metrics:
+    get:
+      tags: [observability]
+      summary: Prometheus text-format metrics [open]
+      responses:
+        "200":
+          description: Prometheus exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  securitySchemes:
+    cookie:
+      type: apiKey
+      in: cookie
+      name: mcsid
+      description: Session cookie from POST /api/login
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key (auth.api_key_enabled must be true)
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: "authentication required" }
+
+  schemas:
+    Report:
+      type: object
+      properties:
+        ran:             { type: boolean }
+        scanned_root:    { type: string }
+        file_count:      { type: integer }
+        total_lines:     { type: integer }
+        code_lines:      { type: integer }
+        comment_lines:   { type: integer }
+        blank_lines:     { type: integer }
+        comment_ratio:   { type: number }
+        total_functions: { type: integer }
+        avg_complexity:  { type: number }
+        max_complexity:  { type: integer }
+        duplicate_blocks:{ type: integer }
+        issue_count:     { type: integer }
+        lines_by_language:
+          type: object
+          additionalProperties: { type: integer }
+        health:
+          type: object
+          properties:
+            robustness:      { type: number }
+            security:        { type: number }
+            efficiency:      { type: number }
+            transferability: { type: number }
+            changeability:   { type: number }
+            tqi:             { type: number }
+            grade:           { type: string, enum: [A, B, C, D, F] }
+        debt:
+          type: object
+          properties:
+            total_minutes: { type: integer }
+            total_hours:   { type: number }
+            cost:          { type: number }
+            debt_ratio:    { type: number }
+            severity_counts:
+              type: object
+              properties:
+                critical: { type: integer }
+                major:    { type: integer }
+                minor:    { type: integer }
+                info:     { type: integer }
+
+    Snapshot:
+      type: object
+      properties:
+        timestamp:        { type: string, format: date-time }
+        file_count:       { type: integer }
+        issue_count:      { type: integer }
+        tqi:              { type: number }
+        grade:            { type: string, enum: [A, B, C, D, F] }
+        duplicate_blocks: { type: integer }
+
+    FileRecord:
+      type: object
+      properties:
+        path:          { type: string }
+        language:      { type: string }
+        total_lines:   { type: integer }
+        code_lines:    { type: integer }
+        comment_lines: { type: integer }
+        blank_lines:   { type: integer }
+        functions:     { type: integer }
+        cyclomatic:    { type: integer }
+        max_nesting:   { type: integer }
+        long_lines:    { type: integer }
+        issues:        { type: integer }
+        dependencies:  { type: array, items: { type: string } }
+
+    Issue:
+      type: object
+      properties:
+        rule_id:             { type: string }
+        title:               { type: string }
+        cwe:                 { type: string }
+        severity:            { type: string, enum: [critical, major, minor, info] }
+        factor:              { type: string }
+        remediation_minutes: { type: integer }
+        file:                { type: string }
+        line:                { type: integer }
+        snippet:             { type: string }
+
+    PlannedStatus:
+      type: object
+      properties:
+        subsystem: { type: string }
+        enabled:   { type: boolean }
+        status:    { type: string, example: planned }
+        note:      { type: string }

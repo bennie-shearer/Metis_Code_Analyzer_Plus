@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metis Code Analyzer Plus</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="logo.svg">
+</head>
+<body>
+
+<div id="login" class="login-overlay" hidden>
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <img src="logo.svg" alt="Metis Code Analyzer Plus logo">
+    <h1>Metis Code Analyzer Plus</h1>
+    <p class="login-sub" data-i18n="loginSubtitle">Administrator access required</p>
+    <label data-i18n="loginUser">Username</label>
+    <input id="loginUser" type="text" autocomplete="username" spellcheck="false">
+    <label data-i18n="loginPass">Password</label>
+    <input id="loginPass" type="password" autocomplete="current-password">
+    <div class="login-err" id="loginErr" hidden data-i18n="loginError">Invalid username or password</div>
+    <button type="submit" id="loginSubmit" data-i18n="loginSubmit">Sign in</button>
+  </form>
+</div>
+
+<div id="browseModal" class="browse-overlay" hidden>
+  <div class="browse-dialog">
+    <div class="browse-header">
+      <span class="browse-title">Select Directory</span>
+      <button id="browseClose" class="ghost icon" title="Close">&times;</button>
+    </div>
+    <div class="browse-path" id="browsePath"></div>
+    <div class="browse-list" id="browseList"></div>
+    <div class="browse-footer">
+      <button id="browseSelect" class="btn-primary">Select This Directory</button>
+      <button id="browseCancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <img src="logo.svg" alt="Metis Code Analyzer Plus logo">
+  <div class="brand">
+    <span class="name">Metis Code Analyzer Plus</span>
+    <span class="ver" id="ver">v2.4.2</span>
+    <!-- v2.4.2: server health dot (green=up, red=down) via /api/health -->
+    <span id="healthDot" class="health-dot" title="Checking server..."></span>
+  </div>
+  <div class="controls">
+    <select id="lang" aria-label="Language"></select>
+    <span class="textsize" role="group" aria-label="Text size">
+      <button id="textDec" class="ghost icon" title="Smaller text">A-</button>
+      <button id="textReset" class="ghost icon" title="Normal text">A</button>
+      <button id="textInc" class="ghost icon" title="Larger text">A+</button>
+    </span>
+    <button id="theme" class="ghost icon" title="Toggle theme" aria-label="Toggle theme">Dark</button>
+    <input id="root" type="text" data-i18n-ph="scanRootPh" placeholder="scan root (e.g. .)" spellcheck="false">
+    <button id="browseBtn" class="ghost" title="Browse for directory">Browse</button>
+    <select id="projSelect" title="Switch project" hidden></select>
+    <button id="scan" data-i18n="analyze">Analyze</button>
+    <button id="pdf"  class="ghost" data-i18n="exportPdf">Export PDF</button>
+    <button id="json" class="ghost" data-i18n="exportJson">Export JSON</button>
+    <button id="csv"  class="ghost" data-i18n="exportCsv">Export CSV</button>
+    <button id="shutdown" class="ghost" data-i18n="shutdown">Shutdown</button>
+    <button id="logout" class="ghost" data-i18n="logout" hidden>Sign out</button>
+  </div>
+</header>
+
+<div id="secBadges" class="sec-badges" hidden>
+  <span id="badgeTls" class="sec-badge"></span>
+  <span id="badgeAes" class="sec-badge"></span>
+  <span id="badgePqc" class="sec-badge"></span>
+</div>
+
+<main>
+  <div class="hero">
+    <div class="panel gauge">
+      <div class="grade-letter" id="grade">-</div>
+      <div class="grade-score" id="tqi">--</div>
+      <div class="grade-label" data-i18n="tqi">Total Quality Index</div>
+    </div>
+    <div class="panel">
+      <h2 data-i18n="healthTitle">Health Factors</h2>
+      <div class="factors" id="factors"></div>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="charts">
+    <div class="panel"><h2 data-i18n="chartSeverity">Issues by Severity</h2><div class="chart-box"><canvas id="sevChart"></canvas></div></div>
+    <div class="panel"><h2 data-i18n="chartLanguage">Code by Language</h2><div class="chart-box"><canvas id="langChart"></canvas></div></div>
+    <div class="panel"><h2 data-i18n="chartComplex">Most Complex Files</h2><div class="chart-box"><canvas id="cxChart"></canvas></div></div>
+  </div>
+
+  <!-- Issues table - v2.4.2 adds Status column for lifecycle management -->
+  <div class="panel section">
+    <h2 data-i18n="issuesTitle">Issues</h2>
+    <div class="filters" id="sevFilters">
+      <button data-sev="all" class="active" data-i18n="filterAll">All</button>
+      <button data-sev="critical" data-i18n="sevCritical">Critical</button>
+      <button data-sev="major" data-i18n="sevMajor">Major</button>
+      <button data-sev="minor" data-i18n="sevMinor">Minor</button>
+      <button data-sev="info" data-i18n="sevInfo">Info</button>
+    </div>
+    <div class="tablewrap">
+      <table id="issuesTable">
+        <thead><tr>
+          <th data-i18n="colSeverity">Severity</th>
+          <th data-i18n="colRule">Rule</th>
+          <th data-i18n="colFinding">Finding</th>
+          <th data-i18n="colCwe">CWE</th>
+          <th data-i18n="colFile">File</th>
+          <th class="num" data-i18n="colLine">Line</th>
+          <th class="num" data-i18n="colMin">Min</th>
+          <th data-i18n="colStatus">Status</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="empty" id="issuesEmpty" hidden data-i18n="issuesEmpty">No issues for this filter.</div>
+    <div id="srcPreview" class="src-preview" hidden>
+      <div class="src-header">
+        <span id="srcLabel" class="src-label"></span>
+        <button id="srcClose" class="src-close" title="Close">&#x2715;</button>
+      </div>
+      <table class="src-table"><tbody id="srcLines"></tbody></table>
+    </div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="filesTitle">Files</h2>
+    <div class="tablewrap">
+      <table id="filesTable">
+        <thead><tr>
+          <th data-sort="path" data-i18n="colPath">Path</th>
+          <th data-sort="language" data-i18n="colLang">Language</th>
+          <th class="num" data-sort="code_lines" data-i18n="colCode">Code</th>
+          <th class="num" data-sort="comment_lines" data-i18n="colComments">Comments</th>
+          <th class="num" data-sort="functions" data-i18n="colFnsShort">Fns</th>
+          <th class="num" data-sort="cyclomatic" data-i18n="colComplexity">Complexity</th>
+          <th class="num" data-sort="max_nesting" data-i18n="colNesting">Nesting</th>
+          <th class="num" data-sort="issues" data-i18n="colIssues">Issues</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="logsTitle">Activity Log</h2>
+    <div class="filters">
+      <button id="logRefresh" data-i18n="logsRefresh">Refresh</button>
+      <button id="logClear" data-i18n="logsClear">Clear</button>
+      <button id="logDownload" data-i18n="logsDownload">Download</button>
+    </div>
+    <div class="tablewrap">
+      <table id="logsTable">
+        <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="empty" id="logsEmpty" hidden data-i18n="logsEmpty">No log entries.</div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="trendTitle">Scan Trends</h2>
+    <p class="empty" id="trendEmpty" data-i18n="trendNone">No history yet. Each scan adds a data point.</p>
+    <div id="trendCharts" hidden>
+      <div class="chart-wrap"><canvas id="tqiTrend" height="140"></canvas></div>
+      <div class="chart-wrap"><canvas id="issueTrend" height="140"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="licenseTitle">License Headers</h2>
+    <div id="licensePanel"></div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="dupTitle">Duplicate Blocks</h2>
+    <p class="empty" id="dupEmpty" data-i18n="dupNone">No duplicate blocks detected.</p>
+    <div id="dupList" class="dup-list"></div>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="depTitle">Dependencies</h2>
+    <p class="empty" id="depEmpty" data-i18n="depNone">No dependencies extracted.</p>
+    <table id="depTable" class="data-table" hidden>
+      <thead><tr><th data-i18n="colFile">File</th><th data-i18n="colDeps">Depends on</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="aiTitle">AI Insights</h2>
+    <div class="filters">
+      <button id="aiRun" data-i18n="aiRun">Summarize with AI</button>
+    </div>
+    <p class="empty" id="aiHint" data-i18n="aiHint">AI is optional.</p>
+    <pre id="aiOut" class="ai-out" hidden></pre>
+  </div>
+
+  <div class="panel section">
+    <h2 data-i18n="platformTitle">Platform Compatibility</h2>
+    <div id="platformPanel">
+      <p class="empty" data-i18n="platformNone">No platform-specific issues detected.</p>
+    </div>
+  </div>
+
+  <!-- v2.4.2: Technologies panel - GET /api/technologies -->
+  <div class="panel section">
+    <h2>Technology Inventory</h2>
+    <p class="section-desc">Detected frameworks and libraries from import and include patterns. Powered by <code>GET /api/technologies</code>. Enable via <code>technologies.enabled = true</code> in <code>code_analyzer.pson</code>.</p>
+    <div id="techPanel">
+      <p class="empty">No frameworks or libraries detected.</p>
+    </div>
+  </div>
+
+  <!-- v2.4.2: Quality Gate panel - GET /api/gate -->
+  <div class="panel section">
+    <h2>Quality Gate</h2>
+    <p class="section-desc">CI/CD quality gate result. Configure via <code>gate.*</code> keys in <code>code_analyzer.pson</code>. Use <code>GET /api/gate</code> for headless CI integration or <code>gate.exit_nonzero = true</code> for non-zero exit on failure.</p>
+    <div id="gatePanel">
+      <p class="empty">Quality gate is disabled. Enable via <code>gate.enabled = true</code> in <code>code_analyzer.pson</code>.</p>
+    </div>
+  </div>
+
+  <!-- Infrastructure: GPU / Kubernetes / Containers (v2.2.0) -->
+  <div class="panel section">
+    <h2>Infrastructure</h2>
+    <p class="section-desc">GPU, Kubernetes, and Container integrations are reserved for future C++20 work targeting Windows, Linux, and macOS. Endpoints are live and report current status from the PSON configuration.</p>
+    <div class="infra-grid">
+      <div class="infra-card">
+        <div class="infra-icon infra-gpu">GPU</div>
+        <div class="infra-body">
+          <div class="infra-label">GPU Acceleration</div>
+          <div class="infra-status"><span id="pgpu" class="infra-badge planned">loading...</span></div>
+          <div class="infra-desc">GPU-accelerated analysis metrics. C++20 implementation planned for Windows, Linux, and macOS. Configure via <code>gpu.*</code> in <code>code_analyzer.pson</code>.</div>
+        </div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-icon infra-k8s">K8S</div>
+        <div class="infra-body">
+          <div class="infra-label">Kubernetes Integration</div>
+          <div class="infra-status"><span id="pk8s" class="infra-badge planned">loading...</span></div>
+          <div class="infra-desc">Kubernetes cluster analysis and workload scanning. C++20 implementation planned for Windows, Linux, and macOS. Configure via <code>kubernetes.*</code> in <code>code_analyzer.pson</code>.</div>
+        </div>
+      </div>
+      <div class="infra-card">
+        <div class="infra-icon infra-ctr">CTR</div>
+        <div class="infra-body">
+          <div class="infra-label">Container Integration</div>
+          <div class="infra-status"><span id="pctr" class="infra-badge planned">loading...</span></div>
+          <div class="infra-desc">Container image and manifest scanning. C++20 implementation planned for Windows, Linux, and macOS. Configure via <code>containers.*</code> in <code>code_analyzer.pson</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TLS / Security Configuration panel (v2.2.0) -->
+  <div class="panel section">
+    <h2>TLS / Security Configuration</h2>
+    <p class="section-desc">Transport Layer Security status for this session. Post-quantum TLS (X25519MLKEM768, NIST FIPS 203 ML-KEM) is negotiated when the server is built with OpenSSL 3.5+; older OpenSSL falls back to classical groups automatically. Configure via <code>tls.*</code> in <code>code_analyzer.pson</code>.</p>
+    <div class="tls-grid">
+      <div class="tls-row"><span class="tls-key">TLS Active</span><span class="tls-val" id="tlsActive">--</span></div>
+      <div class="tls-row"><span class="tls-key">Protocol</span><span class="tls-val" id="tlsProto">--</span></div>
+      <div class="tls-row"><span class="tls-key">Cipher</span><span class="tls-val" id="tlsCipher">--</span></div>
+      <div class="tls-row"><span class="tls-key">Key Exchange</span><span class="tls-val" id="tlsKex">--</span></div>
+      <div class="tls-row"><span class="tls-key">Post-Quantum (ML-KEM)</span><span class="tls-val" id="tlsPq">--</span></div>
+      <div class="tls-row"><span class="tls-key">AES-256-GCM</span><span class="tls-val" id="tlsAes">--</span></div>
+      <div class="tls-row"><span class="tls-key">Certificate CN</span><span class="tls-val" id="tlsCn">--</span></div>
+    </div>
+    <p class="note">Generate a locally-trusted certificate on Windows with <code>certs\gen_certs.ps1</code>. See <code>docs/CONFIGURATION.md</code> for full TLS options.</p>
+  </div>
+
+  <!-- AI Configuration panel (v2.2.0) -->
+  <div class="panel section">
+    <h2>AI Configuration</h2>
+    <p class="section-desc">Optional AI-assisted code-quality summaries via an OpenAI-compatible provider. Requires a TLS-enabled build. Trigger a summary from the AI Insights panel above. The API key is never exposed in the dashboard.</p>
+    <div class="tls-grid">
+      <div class="tls-row"><span class="tls-key">AI Enabled</span><span class="tls-val" id="aiEnabled">--</span></div>
+      <div class="tls-row"><span class="tls-key">Provider</span><span class="tls-val" id="aiProvider">--</span></div>
+      <div class="tls-row"><span class="tls-key">Model</span><span class="tls-val" id="aiModel">--</span></div>
+      <div class="tls-row"><span class="tls-key">Max Output Tokens</span><span class="tls-val" id="aiMaxTokens">--</span></div>
+      <div class="tls-row"><span class="tls-key">Timeout (s)</span><span class="tls-val" id="aiTimeout">--</span></div>
+      <div class="tls-row"><span class="tls-key">Max Report Issues</span><span class="tls-val" id="aiMaxIssues">--</span></div>
+    </div>
+    <p class="note">Configure via <code>ai.*</code> keys in <code>code_analyzer.pson</code>. See <code>docs/CONFIGURATION.md</code> for the full AI options.</p>
+  </div>
+
+  <!-- v2.4.2: Settings / Admin Tools panel -->
+  <div class="panel section">
+    <h2>Admin Tools</h2>
+    <p class="section-desc">Administrative utilities. These endpoints require authentication when <code>auth.enabled = true</code>.</p>
+
+    <h3 style="font-size:13px;margin:14px 0 8px;color:var(--muted)">Password Hash Generator</h3>
+    <p class="section-desc">Generate the SHA-256 hash for a new admin password. Paste the result into <code>auth.password_sha256</code> in <code>code_analyzer.pson</code>. Uses <code>GET /api/hash-password</code>.</p>
+    <div class="hash-row">
+      <input id="hashPwInput" type="password" placeholder="New password" autocomplete="new-password" class="hash-input">
+      <button id="hashPwBtn" class="ghost">Generate Hash</button>
+    </div>
+    <div id="hashPwOut" class="hash-out"></div>
+  </div>
+
+  <p class="note" id="rootNote"></p>
+  <p class="note" id="langNote"></p>
+  <p class="note">
+    <a id="metricsLink" href="/metrics" target="_blank" rel="noopener" data-i18n="metricsLink">Prometheus metrics</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/docs/openapi.yaml" target="_blank" rel="noopener" data-i18n="apiDocsLink">API spec (OpenAPI)</a>
+  </p>
+</main>
+
+<script src="chart.umd.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
