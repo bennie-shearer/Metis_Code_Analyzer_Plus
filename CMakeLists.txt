@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 # Version is maintained in version.hpp (pre-generated, bumped manually).
 project(Metis_Code_Analyzer_Plus
-  VERSION 2.5.1
+  VERSION 2.7.4
   DESCRIPTION "Metis Code Analyzer Plus"
   LANGUAGES CXX)
 

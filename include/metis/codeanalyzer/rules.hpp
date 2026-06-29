@@ -165,9 +165,13 @@ public:
                 }
             }
             if (ln.size() > max_line_len_) return;
+            /* Inline suppression: a line containing "metis-suppress RULE-ID" skips
+             * that specific rule. Syntax: // metis-suppress RULE-ID: reason */
+            const bool has_suppress = (ln.find("metis-suppress") != std::string::npos);
             bool in_win = false, in_posix = false;
             for (int g : guard) { if (g == 1) in_win = true; else if (g == 2) in_posix = true; }
             for (const Rule& r : rules_) {
+                if (has_suppress && ln.find(r.id) != std::string::npos) continue;
                 if (in_win   && r.id.rfind("PORT-WIN",   0) == 0) continue;
                 if (in_posix && r.id.rfind("PORT-POSIX", 0) == 0) continue;
                 /* Suppress path and shell-command rules inside platform guards:
@@ -247,7 +251,7 @@ inline RuleSet default_rules() {
            R"(select\s+\*\s+from)");
     rs.add("CHG-MAGIC-PATH", "Hardcoded absolute filesystem path",
            "", Severity::Minor, HealthFactor::Changeability, 10,
-           R"((["'])((?:/(?:etc|usr|var|home|opt|tmp|root|srv|proc|sys|mnt)(?:/[^\s"']+)+)|(?:/(?!api/|metrics|docs/|\.well-known)[a-z0-9_.\-]+(?:/[a-z0-9_.\-]+)+\.[a-z0-9]{1,6})|(?:[a-z]:\\\\[^"'\s]+))\1)");
+           R"((["'])((?:/(?:etc|usr|home|opt|tmp|root|srv|proc|sys|mnt)(?:/[^\s"']+)+|/var(?!/run/secrets/kubernetes\.io/)(?:/[^\s"']+)+)|(?:/(?!api/|metrics|docs/|\.well-known)[a-z0-9_.\-]+(?:/[a-z0-9_.\-]+)+\.[a-z0-9]{1,6})|(?:[a-z]:\\\\[^"'\s]+))\1)");
     rs.add("SEC-INSECURE-RANDOM", "Insecure random source",
            "CWE-330", Severity::Minor, HealthFactor::Security, 15,
            R"(\b(rand\s*\(|math\.random|random\.random)\b)");

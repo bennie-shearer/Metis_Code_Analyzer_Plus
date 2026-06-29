@@ -23,31 +23,26 @@ SOFTWARE.
 ------------------------------------------------------------------------------
 DISCLAIMER
 
-This software provides Code Analyzer capabilities. Users are responsible for
-proper configuration, Code Analyzer testing, and compliance with applicable
+This software provides code analysis capabilities. Users are responsible for
+proper configuration, analysis testing, and compliance with applicable
 regulations and licensing requirements.
 ------------------------------------------------------------------------------
 
-## Author
+Dedication
+----------
+Metis Code Analyzer Plus written in honor of the Chones Family:
+  Nicholas James Chones, December 3, 1926 - September 29, 2009, USN
+  Anastasia Louis Chones, January 13, 1927 - January 27, 2018
 
-Bennie Shearer (Retired)
-
-## Dedication
-
-Metis Code Analyzer Plus is written in honor of:
-
-CHONES FAMILY
-- Nicholas James Chones, December 3, 1926 - September 29, 2009, USN
-- Anastasia Louis Chones, January 13, 1927 - January 27, 2018
-
-## Acknowledgments
-
-Special thanks to all my mentors through the years.
-
+Acknowledgments
+---------------
 Special thanks to:
+  CLion by JetBrains s.r.o.   https://www.jetbrains.com/clion/
+  WebStorm by JetBrains s.r.o. https://www.jetbrains.com/webstorm/
+  Claude by Anthropic PBC      https://www.anthropic.com/
 
-| Organization                   | Website                              |
-|-------------------------------|--------------------------------------|
-| CLion by JetBrains s.r.o.     | https://www.jetbrains.com/clion/     |
-| WebStorm by JetBrains s.r.o.  | https://www.jetbrains.com/webstorm/  |
-| Claude by Anthropic PBC       | https://www.anthropic.com/           |
+Special thanks to all mentors through the years.
+
+Author
+------
+Bennie Shearer (Retired)

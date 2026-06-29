@@ -1,650 +1,740 @@
 # ==========================================================================
-# Metis Code Analyzer Plus - configuration (PSON)
+# Metis Code Analyzer Plus - v2.6.0 - Configuration (PSON)
 # --------------------------------------------------------------------------
-# This is the single source of truth for ALL operational parameters. Nothing
-# operational is hardcoded in the binary; every value below can be changed here
-# without recompiling.
+# SINGLE SOURCE OF TRUTH for ALL operational parameters. Nothing operational
+# is hardcoded in the binary; every value below can be changed without
+# recompiling.
 #
-# Format (PSON, not JSON):
-#   - Dotted keys:        section.key = value
-#   - Strings:            key = "text"   (embedded quote written as \")
-#   - Integers / doubles: key = 8080   /   key = 75.0
-#   - Booleans:           key = true | false
-#   - Arrays:             key = ["a", "b", "c"]
-#   - Comments:           a '#' outside quotes begins a comment
-# All shipped files are 7-bit ASCII; localized UI text is stored as \uXXXX
-# escapes in web/i18n.js so this rule holds without losing translations.
+# PSON format (dotted-key subset used by Metis Suite):
+#   Dotted keys:   section.key = value
+#   Strings:       key = "text"          embedded quote written as \"
+#   Integers:      key = 8080
+#   Doubles:       key = 75.0
+#   Booleans:      key = true | false
+#   Arrays:        key = ["a", "b", "c"]
+#   Comments:      # outside quotes begins a comment to end of line
+#
+# All shipped source files are 7-bit ASCII. Localized UI text is stored as
+# \uXXXX escapes in web/i18n.js so this invariant holds without losing
+# translations.
 # ==========================================================================
 
 # --------------------------------------------------------------------------
-# server : HTTP/HTTPS listener
+# server : HTTP / HTTPS listener
 # --------------------------------------------------------------------------
-# host          : bind address. "0.0.0.0" binds every interface; use an
-#                 explicit address to restrict exposure.
-# port          : single listen port for both HTTP and HTTPS (TLS wraps this
-#                 same port). Default 8080, fully configurable.
-# static_dir    : directory served as the dashboard web root (confined; the
-#                 server never serves files outside it).
-# max_header_bytes : largest request head accepted before the connection is
-#                 dropped (denial-of-service guard).
-# listen_backlog : kernel accept() backlog depth.
-# recv_chunk_bytes : per-read socket buffer size.
-server.host = "0.0.0.0"
-port = 8080
-server.static_dir = "web"
-server.index_doc = "index.html"
+# host             - Bind address. "0.0.0.0" binds all interfaces; use
+#                    "127.0.0.1" to restrict to localhost only.
+# port             - Single TCP listen port (HTTP and HTTPS share this port;
+#                    TLS wraps it). Default 8080; fully configurable here.
+# static_dir       - Directory served as the dashboard web root. The server
+#                    never serves files outside this directory.
+# index_doc        - File returned for GET / (dashboard entry point).
+# max_header_bytes - Largest request header accepted; larger requests are
+#                    rejected before the body is read (DoS guard).
+# listen_backlog   - Kernel accept() queue depth.
+# recv_chunk_bytes - Per-call socket read buffer size.
+# --------------------------------------------------------------------------
+server.host             = "0.0.0.0"
+port                    = 8443
+server.static_dir       = "web"
+server.index_doc        = "index.html"
 server.max_header_bytes = 1048576
-server.listen_backlog = 64
+server.listen_backlog   = 64
 server.recv_chunk_bytes = 8192
 
 # --------------------------------------------------------------------------
 # scan : what gets analyzed
 # --------------------------------------------------------------------------
-# root      : directory analyzed on startup and by default. Override per-run
-#             via POST /api/scan {"root":"..."} or the dashboard field.
-# on_start  : run an initial scan when the server starts.
-# exclude   : directory / file names skipped during the walk (plain names,
-#             not globs, in this release).
-scan.root = "C:/Users/Benni/CLionProjects/Metis_Code_Analyzer_Plus"
-scan.on_start = true
-scan.exclude = [".git", "build", "node_modules", "cmake-build-debug", "cmake-build-release", "dist", "vendor", "third_party", "chart.umd.js", "rules.hpp", "i18n.js", "openssl-prebuilt", "certs", "sqlite", "tests"]
+# root                   - Directory scanned on startup and used as the
+#                          default when POST /api/scan omits a root.
+#                          Change to your project directory before first use.
+# on_start               - Run a full scan immediately after binding the port.
+# exclude                - Base names skipped during the recursive walk.
+#                          Not glob patterns; matched against entry base name.
+# watch                  - Poll scan.root and rescan when files change.
+# watch_interval_seconds - Polling interval for watch mode (seconds).
+# --------------------------------------------------------------------------
+scan.root                   = "C:/Users/Benni/CLionProjects/Metis_Code_Analyzer_Plus"
+scan.on_start               = true
+scan.exclude                = [".git", "build", "node_modules",
+                               "cmake-build-debug", "cmake-build-release",
+                               "dist", "vendor", "third_party",
+                               "chart.umd.js", "i18n.js",
+                               "openssl-prebuilt", "certs", "sqlite", "tests"]
+scan.watch                  = false
+scan.watch_interval_seconds = 30
 
 # --------------------------------------------------------------------------
 # debt : technical-debt cost model
 # --------------------------------------------------------------------------
-# hourly_rate          : blended remediation rate used for cost estimates.
-# dev_minutes_per_line : development-cost basis for the debt ratio.
-debt.hourly_rate = 75.0
+# hourly_rate          - Blended developer rate for cost estimates (USD/hour).
+# dev_minutes_per_line - Development effort per line; anchors the debt ratio.
+# --------------------------------------------------------------------------
+debt.hourly_rate          = 75.0
 debt.dev_minutes_per_line = 0.5
 
 # --------------------------------------------------------------------------
-# score : health-factor scoring model (every coefficient is tunable)
+# score : health-factor scoring model (all coefficients are tunable)
 # --------------------------------------------------------------------------
-# weight.*  : severity weights applied to issue density.
-# scale.*   : per-factor penalty per weighted point per KLOC.
-# density_cap : maximum density penalty per factor.
-# grade.*   : score thresholds; score >= value maps to that letter, else F.
-# complexity.* : penalties when average per-function complexity exceeds threshold.
-# complexity.threshold         : global default threshold (per-function average).
-# complexity.threshold.<lang>  : per-language override. Lang names are lowercase
-#   with no spaces: cpp, c, python, javascript, typescript, java, csharp, go,
-#   rust, ruby, php, cobol, shell, sql, kotlin, swift, scala, dart, r, lua,
-#   perl, objc, fortran, hlasm, rexx, jcl, pli, haskell, elixir.
-#   Examples (uncomment to activate):
-#score.complexity.threshold.fortran = 8.0
-#score.complexity.threshold.cobol = 10.0
-#score.complexity.threshold.hlasm = 12.0
-# comment.* : penalties when comment ratio is below min_ratio.
-# duplication.* : penalties driven by duplicate-block density.
-score.weight.critical = 10.0
-score.weight.major = 5.0
-score.weight.minor = 2.0
-score.weight.info = 1.0
-score.scale.security = 12.0
-score.scale.robustness = 10.0
-score.scale.efficiency = 8.0
-score.scale.transferability = 6.0
-score.scale.changeability = 6.0
-score.density_cap = 60.0
-score.grade.a = 90.0
-score.grade.b = 80.0
-score.grade.c = 65.0
-score.grade.d = 50.0
-score.complexity.threshold = 5.0
-score.complexity.robustness_mult = 1.5
-score.complexity.robustness_cap = 25.0
+# weight.*   - Severity multipliers used in weighted issue density.
+# scale.*    - Penalty points per weighted issue per KLOC, per factor.
+#              Security and Robustness use higher scales.
+# density_cap - Maximum density penalty per factor (0-100 scale).
+# grade.*    - Score thresholds. score >= grade.a -> A, >= b -> B, etc.
+# complexity.threshold           - Per-function cyclomatic complexity limit.
+# complexity.threshold.<lang>    - Per-language override (lowercase no-space
+#   lang names: cpp c python javascript typescript java csharp go rust ruby
+#   php cobol shell sql kotlin swift scala dart r lua perl objc fortran hlasm
+#   rexx jcl pli haskell elixir).
+# complexity.robustness_mult/cap - Robustness penalty for excess complexity.
+# complexity.changeability_mult/cap - Changeability penalty.
+# comment.min_ratio              - Minimum comment/total-lines ratio.
+# comment.transferability_mult/cap - Transferability penalty below min_ratio.
+# comment.changeability_mult/cap - Changeability penalty.
+# duplication.*_mult/cap         - Penalties driven by duplicate-block density.
+# --------------------------------------------------------------------------
+score.weight.critical               = 10.0
+score.weight.major                  = 5.0
+score.weight.minor                  = 2.0
+score.weight.info                   = 1.0
+
+score.scale.security                = 12.0
+score.scale.robustness              = 10.0
+score.scale.efficiency              = 8.0
+score.scale.transferability         = 6.0
+score.scale.changeability           = 6.0
+score.scale.portability             = 8.0
+score.density_cap                   = 60.0
+
+score.grade.a                       = 90.0
+score.grade.b                       = 80.0
+score.grade.c                       = 65.0
+score.grade.d                       = 50.0
+
+score.complexity.threshold          = 5.0
+score.complexity.robustness_mult    = 1.5
+score.complexity.robustness_cap     = 25.0
 score.complexity.changeability_mult = 1.2
-score.complexity.changeability_cap = 20.0
-score.comment.min_ratio = 0.10
-score.comment.transferability_mult = 1.5
-score.comment.transferability_cap = 20.0
-score.comment.changeability_mult = 1.0
-score.comment.changeability_cap = 15.0
-score.duplication.changeability_mult = 2.0
-score.duplication.changeability_cap = 20.0
+score.complexity.changeability_cap  = 20.0
+
+score.comment.min_ratio             = 0.10
+score.comment.transferability_mult  = 1.5
+score.comment.transferability_cap   = 20.0
+score.comment.changeability_mult    = 1.0
+score.comment.changeability_cap     = 15.0
+
+score.duplication.changeability_mult   = 2.0
+score.duplication.changeability_cap    = 20.0
 score.duplication.transferability_mult = 1.5
-score.duplication.transferability_cap = 15.0
+score.duplication.transferability_cap  = 15.0
 
 # --------------------------------------------------------------------------
-# analysis : scanner sizing limits
+# analysis : scanner sizing and behavior
 # --------------------------------------------------------------------------
-# max_file_bytes          : per-file read cap.
-# duplication_block_lines : window size for duplicate-block hashing.
-# long_line_columns       : column count that marks a line as "long".
-# max_rule_line_length    : lines longer than this are skipped for regex rule
-#                           matching (prevents backtracking hangs on minified
-#                           or generated files).
-analysis.max_file_bytes = 4194304
+# max_file_bytes           - Per-file read cap. Files larger than this are
+#                            skipped (prevents stalling on blobs/minified JS).
+# duplication_block_lines  - Sliding-window block size for duplicate hashing.
+# long_line_columns        - Column count that marks a line as "long".
+# max_rule_line_length     - Lines longer than this skip regex rule matching
+#                            (prevents catastrophic backtracking on minified
+#                            files). Line metrics are still computed normally.
+# incremental              - Reuse cached metrics for unmodified files.
+#                            Duplication detection runs across all files each
+#                            scan to catch cross-file duplicates.
+# --------------------------------------------------------------------------
+analysis.max_file_bytes          = 4194304
 analysis.duplication_block_lines = 6
-analysis.long_line_columns = 120
-analysis.max_rule_line_length = 2000
-# incremental : skip recomputing metrics/issues for files whose modification
-#               time has not changed since the last scan. Duplication detection
-#               still runs across all files each scan. Default true.
-analysis.incremental = true
+analysis.long_line_columns       = 120
+analysis.max_rule_line_length    = 2000
+analysis.incremental             = true
 
 # --------------------------------------------------------------------------
-# auth : administrator login (always recommended on)
+# auth : administrator login
 # --------------------------------------------------------------------------
-# enabled              : require sign-in for data and control endpoints.
-# username             : administrator username.
-# password_sha256      : SHA-256 hex of the password; no plaintext is stored.
-#                        Default password is Admin#2026 - CHANGE IT before deployment.
-#                        Generate a new hash via POST /api/hash-password (see SUPPORT.md).
-
-# session_minutes      : session lifetime; refreshed on each authorized call.
-# session_token_length : length of the random session token.
-# login_max_attempts   : failed logins per username allowed within the window
-#                        before further attempts are throttled (brute-force
-#                        protection). Set to 0 to disable throttling.
-# login_window_seconds : sliding window for login_max_attempts.
-# api_key_enabled      : allow headless callers to authenticate with an
-#                        X-API-Key header instead of a session cookie.
-# api_key_sha256       : SHA-256 hex of the API key. Generate the hash via
-#                        POST /api/hash-password with body {"value":"<password>"} (or GET /api/hash-password?value=<text> -- note: encode # as %23 in GET URLs) (unauthenticated
-#                        endpoint for key setup only).
-auth.enabled = true
-auth.username = "admin"
-auth.password_sha256 = "b5af2beb9b7fd5aa4eb21b61925bd3856793e54e0a39052fbcfaf5b477fd07f3"
-auth.session_minutes = 60
+# enabled              - Require sign-in for data and control endpoints.
+# username             - Administrator username.
+# password_sha256      - SHA-256 hex of the password. No plaintext stored.
+#                        DEFAULT IS Admin#2026 -- CHANGE BEFORE DEPLOYMENT.
+#                        New hash: POST /api/hash-password {"value":"<pass>"}
+#                        or GET /api/hash-password?value=<pass>  (encode #
+#                        as %23 in GET URLs to avoid fragment truncation).
+# session_minutes      - Session lifetime; refreshed on each authorized call.
+# session_token_length - Random session token length (characters).
+# login_max_attempts   - Failed logins allowed per username per window.
+#                        Set 0 to disable brute-force throttling.
+# login_window_seconds - Sliding window for login_max_attempts.
+# api_key_enabled      - Allow X-API-Key header authentication (CI/scripts).
+# api_key_sha256       - SHA-256 hex of the API key. Keep secret.
+# --------------------------------------------------------------------------
+auth.enabled              = true
+auth.username             = "admin"
+auth.password_sha256      = "b5af2beb9b7fd5aa4eb21b61925bd3856793e54e0a39052fbcfaf5b477fd07f3"
+auth.session_minutes      = 60
 auth.session_token_length = 48
-auth.login_max_attempts = 5
+auth.login_max_attempts   = 5
 auth.login_window_seconds = 60
-auth.api_key_enabled = false
-auth.api_key_sha256 = ""
+auth.api_key_enabled      = false
+auth.api_key_sha256       = ""
 
 # --------------------------------------------------------------------------
 # log : activity log
 # --------------------------------------------------------------------------
-# level         : debug | info | warn | error (minimum recorded level).
-# max_entries   : in-memory ring-buffer capacity; oldest are dropped.
-# default_limit : entries returned by GET /api/logs when no limit is given.
-log.level = "info"
-log.max_entries = 1000
+# level         - Minimum severity: debug | info | warn | error.
+# max_entries   - In-memory ring-buffer capacity; oldest entries dropped.
+# default_limit - Entries returned by GET /api/logs with no ?limit= param.
+# --------------------------------------------------------------------------
+log.level         = "info"
+log.max_entries   = 1000
 log.default_limit = 200
 
 # --------------------------------------------------------------------------
-# ui : dashboard limits
+# ui : dashboard display limits and persistence
 # --------------------------------------------------------------------------
-# max_table_rows : maximum rows rendered in the issues / files tables.
-# pdf_max_issues : maximum issues listed in the exported PDF report.
-# history_max    : number of past scan snapshots retained for trend display.
-# history_file   : path to a newline-delimited JSON file for persistent
-#                  history. Empty disables persistence (history is in-memory
-#                  only and lost on restart). The file is appended on each
-#                  scan; existing entries are loaded on startup.
-ui.max_table_rows = 500
-ui.pdf_max_issues = 40
-ui.history_max = 50
-ui.history_file = ""
+# max_table_rows    - Max rows in Issues and Files tables (browser limit).
+# pdf_max_issues    - Max issues listed in the PDF quality report.
+# history_max       - Past scan snapshots kept for the Scan Trends panel.
+# history_file      - Path to NDJSON file for persistent history (empty =
+#                     in-memory only; lost on restart).
+# issue_status_file - Path to NDJSON file for persistent issue status
+#                     overrides (open/accepted/wontfix/false_positive).
+#                     Empty uses default: data/issue_status.ndjson next to
+#                     the binary. Each line:
+#                     {"key":"rule:file:line","status":"...","note":"..."}.
+# --------------------------------------------------------------------------
+ui.max_table_rows    = 500
+ui.pdf_max_issues    = 40
+ui.history_max       = 50
+ui.history_file      = ""
+ui.issue_status_file = ""
 
 # --------------------------------------------------------------------------
 # i18n : localization
 # --------------------------------------------------------------------------
-# default_locale : locale selected on first load (American English).
-# locales        : locales offered in the language menu.
+# default_locale - Locale selected on first browser load.
+# locales        - Locales in the language drop-down. Translations in
+#                  web/i18n.js.
+# --------------------------------------------------------------------------
 i18n.default_locale = "en-US"
-i18n.locales = ["en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "ja-JP"]
+i18n.locales        = ["en-US", "en-GB", "fr-FR", "de-DE",
+                        "es-ES", "it-IT", "pt-BR", "ja-JP"]
 
 # --------------------------------------------------------------------------
-# tls : transport security (ALWAYS ON by default)
+# tls : Transport Layer Security (on by default)
 # --------------------------------------------------------------------------
-# Requires a build with METIS_ENABLE_TLS=ON (links OpenSSL). If the binary was
-# built without TLS support the server logs a warning and serves plain HTTP on
-# the same port instead of failing to start.
-# enabled      : terminate TLS on the server port.
-# cert_file    : PEM certificate path; empty uses an ephemeral self-signed cert.
-# key_file     : PEM private key path.
-# groups       : key-exchange groups, highest priority first. The hybrid
-#                X25519MLKEM768 provides post-quantum protection (ML-KEM,
-#                NIST FIPS 203) and needs OpenSSL 3.5+; older OpenSSL falls
-#                back to the classical groups automatically.
-# min_version  : "1.2" or "1.3" minimum TLS protocol version.
-# cert_days    : validity period of a generated self-signed certificate.
-# key_bits     : RSA key size for a generated self-signed certificate.
-# cert_cn      : common name for a generated self-signed certificate.
-tls.enabled = true
-tls.cert_file = "C:/Tools/localhost+2.pem"
-tls.key_file  = "C:/Tools/localhost+2-key.pem"
-tls.groups = "X25519MLKEM768:X25519:secp256r1:secp384r1"
+# Requires build with METIS_ENABLE_TLS=ON (default). If the binary was built
+# without TLS support a warning is logged and plain HTTP is served instead.
+#
+# enabled      - Terminate TLS on the listen port.
+# cert_file    - PEM certificate path. Empty = auto-generate self-signed.
+# key_file     - PEM private key path. Empty = auto-generate self-signed.
+#                Windows: generate a locally-trusted cert:
+#                  powershell -ExecutionPolicy Bypass -File certs\gen_certs.ps1
+# groups       - TLS key-exchange groups (colon-separated, highest priority
+#                first). X25519MLKEM768 is a post-quantum hybrid combining
+#                X25519 with ML-KEM-768 (NIST FIPS 203); requires OpenSSL 3.5+.
+#                Older OpenSSL falls back to the next group automatically.
+# min_version  - Minimum TLS protocol: "1.2" or "1.3".
+# cert_days    - Validity days for an auto-generated self-signed cert.
+# key_bits     - RSA key size for an auto-generated self-signed cert.
+# cert_cn      - Common Name for an auto-generated self-signed cert.
+# --------------------------------------------------------------------------
+tls.enabled     = true
+tls.cert_file   = "C:/Tools/localhost+2.pem"
+tls.key_file    = "C:/Tools/localhost+2-key.pem"
+tls.groups      = "X25519MLKEM768:X25519:secp256r1:secp384r1"
 tls.min_version = "1.2"
-tls.cert_days = 365
-tls.key_bits = 2048
-tls.cert_cn = "Metis Code Analyzer Plus"
+tls.cert_days   = 365
+tls.key_bits    = 2048
+tls.cert_cn     = "Metis Code Analyzer Plus"
 
 # --------------------------------------------------------------------------
 # ai : optional AI-assisted findings summary (outbound HTTPS; needs TLS build)
 # --------------------------------------------------------------------------
-# enabled        : allow the /api/ai/summarize endpoint to call the provider.
-# provider       : free-form label (e.g. "anthropic", "openai", "local").
-# endpoint       : full HTTPS URL of the provider's chat/completions API.
-# model          : model identifier sent in the request.
-# api_key        : provider API key (sent as a bearer token). Keep this secret.
-# timeout_seconds: outbound request timeout.
-# max_output_tokens : cap on the model response length.
-# max_report_issues : number of top issues included in the AI summary prompt.
-# system_prompt  : instruction prepended to the analysis summary.
-ai.enabled = false
-ai.provider = ""
-ai.endpoint = ""
-ai.model = ""
-ai.api_key = ""
-ai.timeout_seconds = 30
+# enabled           - Allow POST /api/ai/summarize to call the provider.
+# provider          - Label shown in the AI Configuration panel.
+#                     Examples: "anthropic", "openai", "local"
+# endpoint          - Full HTTPS URL of the provider API.
+#                     Anthropic: https://api.anthropic.com/v1/messages
+#                     OpenAI:    https://api.openai.com/v1/chat/completions
+# model             - Model ID sent in the request body.
+#                     Anthropic: claude-sonnet-4-6
+#                     OpenAI:    gpt-4o
+# api_key           - Provider API key (Bearer token). KEEP SECRET.
+# timeout_seconds   - Outbound request timeout.
+# max_output_tokens - Token cap on the model response.
+# max_report_issues - Issues included in the AI summary prompt.
+# system_prompt     - Instruction prepended to every AI summary request.
+# --------------------------------------------------------------------------
+ai.enabled           = false
+ai.provider          = ""
+ai.endpoint          = ""
+ai.model             = ""
+ai.api_key           = ""
+ai.timeout_seconds   = 30
 ai.max_output_tokens = 1024
 ai.max_report_issues = 15
-ai.system_prompt = "You are a senior code reviewer. Summarize the code-quality report and suggest the highest-priority fixes."
+ai.system_prompt     = "You are a senior code reviewer. Summarize the code-quality report and suggest the highest-priority fixes."
 
 # --------------------------------------------------------------------------
-# webhook : outbound POST notification on scan completion (optional)
+# webhook : outbound POST notification on scan completion
 # --------------------------------------------------------------------------
-# enabled          : fire a webhook POST after each scan.
-# url              : destination URL (http or https).
-# on_grade_below   : only fire when the grade falls below this threshold
-#                    ("A","B","C","D","F" or "" to always fire).
-# timeout_seconds  : outbound request timeout.
-webhook.enabled = false
-webhook.url = ""
-webhook.on_grade_below = ""
+# enabled         - Fire a webhook POST after each scan.
+# url             - Destination (http:// or https://).
+# on_grade_below  - Only fire when grade is below this threshold.
+#                   Values: "A" "B" "C" "D" "F" or "" to always fire.
+# timeout_seconds - Outbound timeout in seconds.
+# --------------------------------------------------------------------------
+webhook.enabled         = false
+webhook.url             = ""
+webhook.on_grade_below  = ""
 webhook.timeout_seconds = 10
-
-# --------------------------------------------------------------------------
-# scan (continued)
-# --------------------------------------------------------------------------
-# watch            : poll the scan root and re-scan when files change.
-# watch_interval_seconds : polling interval.
-scan.watch = false
-scan.watch_interval_seconds = 30
 
 # --------------------------------------------------------------------------
 # gate : quality gate for CI/CD pass/fail
 # --------------------------------------------------------------------------
-# enabled           : evaluate the gate after each scan.
-# min_tqi           : minimum TQI required (0.0 disables this check).
-# max_issues        : maximum total issues allowed (-1 = disabled).
-# max_critical      : maximum critical-severity issues allowed (-1 = disabled).
-# fail_on_new_critical : fail if any new critical issue is introduced vs. the
-#                     previous snapshot (requires ui.history_file to persist).
-# exit_nonzero      : exit with code 1 on failure (CI pipeline use).
-gate.enabled = false
-gate.min_tqi = 80.0
-gate.max_issues = -1
-gate.max_critical = 0
+# enabled              - Evaluate gate after each scan.
+# min_tqi              - Minimum TQI (0-100) required to pass. 0 = disabled.
+# max_issues           - Maximum total issues allowed. -1 = disabled.
+# max_critical         - Maximum critical-severity issues. -1 = disabled.
+#                        0 = zero-tolerance (recommended for production).
+# fail_on_new_critical - Fail if any new critical issue appears vs. the
+#                        previous scan. Requires ui.history_file to persist
+#                        history across restarts.
+# exit_nonzero         - Exit with code 1 on gate failure (CI pipelines).
+# --------------------------------------------------------------------------
+gate.enabled              = false
+gate.min_tqi              = 80.0
+gate.max_issues           = -1
+gate.max_critical         = 0
 gate.fail_on_new_critical = false
-gate.exit_nonzero = false
+gate.exit_nonzero         = false
 
 # --------------------------------------------------------------------------
 # technologies : framework and library inventory detection
 # --------------------------------------------------------------------------
-# enabled : detect common frameworks/libraries from import/include patterns
-#           and report them at GET /api/technologies.
+# enabled - Detect frameworks and libraries from import/include patterns.
+#           Results: GET /api/technologies, Technology Inventory panel.
+# --------------------------------------------------------------------------
 technologies.enabled = true
-# and macOS. The endpoints exist and report "planned" today; enabling a flag
-# does not yet change behavior. Documented here so configuration is complete.
+
+# --------------------------------------------------------------------------
+# gpu : GPU acceleration (detection probe; full C++20 impl planned)
+# --------------------------------------------------------------------------
+# enabled - Probe for GPU runtimes (nvidia-smi, OpenCL). Full GPU-accelerated
+#           analysis planned for a future release (C++20; Windows/Linux/macOS).
+#           Endpoint: GET /api/gpu
+# note    - Status note returned when disabled.
+# --------------------------------------------------------------------------
 gpu.enabled = false
-gpu.note = "GPU acceleration is planned (C++20; Windows/Linux/macOS)."
+gpu.note    = "GPU acceleration is planned (C++20; Windows, Linux, macOS)."
+
+# --------------------------------------------------------------------------
+# kubernetes : Kubernetes integration (C++20 impl planned)
+# --------------------------------------------------------------------------
+# enabled - Probe for kubeconfig and in-cluster service account token.
+#           Full workload scanning planned (C++20; Windows/Linux/macOS).
+#           Endpoint: GET /api/kubernetes
+# note    - Status note returned when disabled.
+# --------------------------------------------------------------------------
 kubernetes.enabled = false
-kubernetes.note = "Kubernetes integration is planned (C++20; Windows/Linux/macOS)."
+kubernetes.note    = "Kubernetes integration is planned (C++20; Windows, Linux, macOS)."
+
+# --------------------------------------------------------------------------
+# containers : container runtime integration (C++20 impl planned)
+# --------------------------------------------------------------------------
+# enabled - Probe for Docker/Podman/containerd socket or Windows named pipe.
+#           No Docker dependency at build time. Full container image scanning
+#           planned (C++20; Windows/Linux/macOS). Endpoint: GET /api/containers
+# note    - Status note returned when disabled.
+# --------------------------------------------------------------------------
 containers.enabled = false
-containers.note = "Container integration is planned (C++20; Windows/Linux/macOS)."
+containers.note    = "Container integration is planned (C++20; Windows, Linux, macOS)."
 
 # --------------------------------------------------------------------------
-# rule catalog : issue-detection rules (loaded in order until a gap)
+# project : named scan roots for multi-project support (optional)
 # --------------------------------------------------------------------------
-# Per rule: id, title, cwe, severity (critical|major|minor|info),
-# factor (robustness|security|efficiency|transferability|changeability),
-# minutes (remediation estimate), pattern (ECMAScript regex, case-insensitive),
-# enabled (optional, default true). Write an embedded double-quote as \".
-rule.1.id = "SEC-HARDCODED-SECRET"
-rule.1.title = "Possible hardcoded credential or secret"
-rule.1.cwe = "CWE-798"
-rule.1.severity = "critical"
-rule.1.factor = "security"
-rule.1.minutes = 30
-rule.1.pattern = "(password|passwd|secret|api[_-]?key|token)\s*[:=]\s*[\"'](?![/+\s])[^\"']{4,}[\"']"
-rule.1.enabled = true
-
-rule.2.id = "SEC-EVAL"
-rule.2.title = "Dynamic code execution (eval/exec)"
-rule.2.cwe = "CWE-95"
-rule.2.severity = "major"
-rule.2.factor = "security"
-rule.2.minutes = 25
-rule.2.pattern = "\beval\s*\(|\bexec\s*\(\s*(?![\"'R)]|const\b)"
-
-rule.3.id = "SEC-WEAK-HASH"
-rule.3.title = "Weak hashing algorithm"
-rule.3.cwe = "CWE-327"
-rule.3.severity = "major"
-rule.3.factor = "security"
-rule.3.minutes = 20
-rule.3.pattern = "\b(md5|sha1)\b"
-
-rule.4.id = "SEC-WEAK-CIPHER"
-rule.4.title = "Weak or broken cipher"
-rule.4.cwe = "CWE-327"
-rule.4.severity = "major"
-rule.4.factor = "security"
-rule.4.minutes = 30
-rule.4.pattern = "\b(des|rc4|ecb)\b"
-
-rule.5.id = "SEC-SQL-CONCAT"
-rule.5.title = "Possible SQL built by string concatenation"
-rule.5.cwe = "CWE-89"
-rule.5.severity = "critical"
-rule.5.factor = "security"
-rule.5.minutes = 40
-rule.5.pattern = "(select\\s+\\w|insert\\s+into|update\\s+\\w|delete\\s+from).*[\"'].*\+"
-
-rule.6.id = "SEC-SYSTEM-CALL"
-rule.6.title = "Shell command execution"
-rule.6.cwe = "CWE-78"
-rule.6.severity = "major"
-rule.6.factor = "security"
-rule.6.minutes = 25
-rule.6.pattern = "(^|[^.\w/])(system|popen)\s*\(\s*[^\"\'L]|\bos\.system\s*\(\s*[^\"\']|\bsubprocess\.call\s*\(\s*[^\"\'[]"
-
-rule.7.id = "ROB-EMPTY-CATCH"
-rule.7.title = "Empty or swallowed exception handler"
-rule.7.cwe = "CWE-1069"
-rule.7.severity = "major"
-rule.7.factor = "robustness"
-rule.7.minutes = 15
-rule.7.pattern = "catch\s*\([^)]*\)\s*\{\s*\}"
-
-rule.8.id = "ROB-TODO"
-rule.8.title = "Unresolved TODO / FIXME marker"
-rule.8.cwe = ""
-rule.8.severity = "minor"
-rule.8.factor = "changeability"
-rule.8.minutes = 10
-rule.8.pattern = "\b(todo|fixme|hack|xxx)\b"
-
-rule.9.id = "EFF-SELECT-STAR"
-rule.9.title = "SELECT * may fetch unused columns"
-rule.9.cwe = ""
-rule.9.severity = "minor"
-rule.9.factor = "efficiency"
-rule.9.minutes = 10
-rule.9.pattern = "select\s+\*\s+from"
-
-rule.10.id = "CHG-MAGIC-PATH"
-rule.10.title = "Hardcoded absolute filesystem path"
-rule.10.cwe = ""
-rule.10.severity = "minor"
-rule.10.factor = "changeability"
-rule.10.minutes = 10
-# Require a genuine filesystem marker: known OS-root prefix (/etc /usr /var /home
-# /opt /tmp /root /srv /proc /sys /mnt) OR a multi-segment path ending with a
-# file extension that does NOT start with /api or /metrics (URL routes).
-rule.10.pattern = "([\"'])((?:/(?:etc|usr|var|home|opt|tmp|root|srv|proc|sys|mnt)(?:/[^\s\"']+)+)|(?:/(?!api/|metrics|docs/|\.well-known)[a-z0-9_.\-]+(?:/[a-z0-9_.\-]+)+\.[a-z0-9]{1,6})|(?:[a-z]:\\\\[^\"'\s]+))\1"
-
-rule.11.id = "SEC-INSECURE-RANDOM"
-rule.11.title = "Insecure random source"
-rule.11.cwe = "CWE-330"
-rule.11.severity = "minor"
-rule.11.factor = "security"
-rule.11.minutes = 15
-rule.11.pattern = "\b(rand\s*\(|math\.random|random\.random)\b"
-
-rule.12.id = "SEC-PRIVATE-KEY"
-rule.12.title = "PEM private key block in source"
-rule.12.cwe = "CWE-321"
-rule.12.severity = "critical"
-rule.12.factor = "security"
-rule.12.minutes = 60
-rule.12.pattern = "-----BEGIN (RSA |EC |DSA |OPENSSH |PRIVATE KEY)"
-
-rule.13.id = "SEC-AWS-KEY"
-rule.13.title = "Possible AWS access key ID"
-rule.13.cwe = "CWE-798"
-rule.13.severity = "critical"
-rule.13.factor = "security"
-rule.13.minutes = 60
-rule.13.pattern = "AKIA[0-9A-Z]{16}"
-
-rule.14.id = "SEC-BEARER-TOKEN"
-rule.14.title = "Possible bearer token or JWT literal"
-rule.14.cwe = "CWE-798"
-rule.14.severity = "major"
-rule.14.factor = "security"
-rule.14.minutes = 30
-rule.14.pattern = "Bearer\s+[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]"
-
-rule.15.id = "CHG-NO-LICENSE"
-rule.15.title = "No SPDX license identifier or copyright notice"
-rule.15.cwe = ""
-rule.15.severity = "info"
-rule.15.factor = "transferability"
-rule.15.minutes = 5
-rule.15.enabled = false
-rule.15.pattern = "SPDX-License-Identifier"
-
-# --------------------------------------------------------------------------
-# project : optional named scan roots for multi-project support
-# --------------------------------------------------------------------------
-# Define one or more named projects to scan. When no project.N entries are
-# present, one implicit project named "default" is created using scan.root.
-# Each project has its own result, history ring, and license summary.
-# Switch the active project via POST /api/project/select {"name":"..."}.
-# List all projects via GET /api/projects.
+# When no project.N entries are present one implicit "default" project is
+# created using scan.root. Switch via POST /api/project/select {"name":"..."}.
+# List via GET /api/projects.
 #
-# Example (uncomment to activate):
 #project.1.name = "Server"
 #project.1.root = "./server"
 #project.2.name = "Client"
 #project.2.root = "./client"
 
 # --------------------------------------------------------------------------
-# Additional rule sets: MISRA-C style and CERT-C / CWE patterns
-# --------------------------------------------------------------------------
-# These rules are disabled by default. Enable individually per project.
-# Rule IDs follow the pattern MISRA-<rule> or CERT-<rule>.
-# All patterns are heuristic regex; not a substitute for a certified checker.
-
-rule.16.id = "MISRA-C-15-1"
-rule.16.title = "goto statement used (MISRA-C Rule 15.1)"
-rule.16.cwe = "CWE-1120"
-rule.16.severity = "major"
-rule.16.factor = "changeability"
-rule.16.minutes = 20
-rule.16.enabled = false
-rule.16.pattern = "\bgoto\b"
-
-rule.17.id = "MISRA-C-21-3"
-rule.17.title = "Memory allocation / deallocation in non-dynamic context (MISRA-C 21.3)"
-rule.17.cwe = "CWE-789"
-rule.17.severity = "major"
-rule.17.factor = "robustness"
-rule.17.minutes = 30
-rule.17.enabled = false
-rule.17.pattern = "\b(malloc|calloc|realloc|free)\s*\("
-
-rule.18.id = "CERT-MSC32-C"
-rule.18.title = "Use of unseeded random number generator (CERT MSC32-C)"
-rule.18.cwe = "CWE-330"
-rule.18.severity = "major"
-rule.18.factor = "security"
-rule.18.minutes = 20
-rule.18.enabled = false
-rule.18.pattern = "\brand\s*\(\s*\)"
-
-rule.19.id = "CERT-STR31-C"
-rule.19.title = "Unbounded string copy (CERT STR31-C)"
-rule.19.cwe = "CWE-120"
-rule.19.severity = "critical"
-rule.19.factor = "security"
-rule.19.minutes = 45
-rule.19.enabled = false
-rule.19.pattern = "\b(strcpy|strcat|gets|sprintf)\s*\("
-
-rule.20.id = "CERT-ERR33-C"
-rule.20.title = "Return value of error-prone function not checked (CERT ERR33-C)"
-rule.20.cwe = "CWE-252"
-rule.20.severity = "minor"
-rule.20.factor = "robustness"
-rule.20.minutes = 15
-rule.20.enabled = false
-rule.20.pattern = "^\s*(fopen|fclose|fread|fwrite|scanf|fscanf)\s*\("
-
-# --------------------------------------------------------------------------
 # arch : architecture dependency rules (planned)
 # --------------------------------------------------------------------------
-# Define allowed import relationships between named module groups.
-# Violations will be reported as issues with severity "major".
-# Example (uncomment to activate):
-#arch.enabled = false
-#arch.module.1.name = "core"
+#arch.enabled         = false
+#arch.module.1.name  = "core"
 #arch.module.1.paths = ["src/core", "include/core"]
-#arch.module.2.name = "ui"
+#arch.module.2.name  = "ui"
 #arch.module.2.paths = ["src/ui"]
-#arch.allow.1.from = "ui"
-#arch.allow.1.to = "core"
-# (ui may import from core; core importing from ui would be a violation)
+#arch.allow.1.from   = "ui"
+#arch.allow.1.to     = "core"
 
-# --------------------------------------------------------------------------
-# Portability rules (21-27): Windows/POSIX/cross-platform compatibility
-# --------------------------------------------------------------------------
-# These rules detect platform-specific code that limits portability across
-# Windows, Linux, and macOS. Enabled by default -- portability is a
-# first-class quality concern alongside the other five health factors.
+# ==========================================================================
+# RULE CATALOG
+# ==========================================================================
+# Rules are loaded in order (rule.1 through first gap). When any rule.N.*
+# keys exist, ALL rules come from this file; built-in default_rules() is not
+# used.
+#
+# Per-rule keys:
+#   id       - Unique rule ID shown in reports and exports.
+#   title    - One-line human description.
+#   cwe      - CWE reference ("CWE-NNN") or "" if not applicable.
+#   severity - critical | major | minor | info
+#   factor   - robustness | security | efficiency | transferability |
+#              changeability | portability
+#   minutes  - Estimated remediation effort in minutes.
+#   enabled  - Optional; default true. false = disabled without removing.
+#   pattern  - ECMAScript regex matched case-insensitively per source line.
+#              Lines longer than analysis.max_rule_line_length are skipped.
+#              Write an embedded double-quote as \".
+#
+# Platform-guard suppression (built into the rule engine):
+#   PORT-WIN-*    suppressed inside #ifdef _WIN32 ... #endif
+#   PORT-POSIX-*  suppressed inside #ifndef _WIN32 ... #endif
+#   CHG-MAGIC-PATH and SEC-SYSTEM-CALL suppressed inside any preprocessor
+#   block that references a platform macro (_WIN32 __APPLE__ __linux__ etc.)
+#   because platform-probe code legitimately references OS-specific paths.
+# ==========================================================================
 
-rule.21.id = "PORT-WIN-API"
-rule.21.title = "Windows-specific header included without #ifdef _WIN32 guard"
-rule.21.cwe = "CWE-1164"
+# --- Security (rules 1-6, 11-14, 28-30) -----------------------------------
+
+rule.1.id       = "SEC-HARDCODED-SECRET"
+rule.1.title    = "Possible hardcoded credential or secret"
+rule.1.cwe      = "CWE-798"
+rule.1.severity = "critical"
+rule.1.factor   = "security"
+rule.1.minutes  = 30
+rule.1.enabled  = true
+rule.1.pattern  = "(password|passwd|secret|api[_-]?key|token)\\s*[:=]\\s*[\"'](?![/+\\s])[^\"']{4,}[\"']"
+
+rule.2.id       = "SEC-EVAL"
+rule.2.title    = "Dynamic code execution (eval/exec)"
+rule.2.cwe      = "CWE-95"
+rule.2.severity = "major"
+rule.2.factor   = "security"
+rule.2.minutes  = 25
+rule.2.enabled  = true
+rule.2.pattern  = "\\beval\\s*\\(|\\bexec\\s*\\(\\s*(?![\"'R)]|const\\b)"
+
+rule.3.id       = "SEC-WEAK-HASH"
+rule.3.title    = "Weak hashing algorithm (MD5 or SHA-1)"
+rule.3.cwe      = "CWE-327"
+rule.3.severity = "major"
+rule.3.factor   = "security"
+rule.3.minutes  = 20
+rule.3.enabled  = true
+rule.3.pattern  = "\\b(md5|sha1)\\b"
+
+rule.4.id       = "SEC-WEAK-CIPHER"
+rule.4.title    = "Weak or broken cipher (DES, RC4, ECB)"
+rule.4.cwe      = "CWE-327"
+rule.4.severity = "major"
+rule.4.factor   = "security"
+rule.4.minutes  = 30
+rule.4.enabled  = true
+rule.4.pattern  = "\\b(des|rc4|ecb)\\b"
+
+rule.5.id       = "SEC-SQL-CONCAT"
+rule.5.title    = "SQL built by string concatenation (injection risk)"
+rule.5.cwe      = "CWE-89"
+rule.5.severity = "critical"
+rule.5.factor   = "security"
+rule.5.minutes  = 40
+rule.5.enabled  = true
+rule.5.pattern  = "(select\\s+\\w|insert\\s+into|update\\s+\\w|delete\\s+from).*[\"'].*\\+"
+
+rule.6.id       = "SEC-SYSTEM-CALL"
+rule.6.title    = "Shell command execution (OS injection risk)"
+rule.6.cwe      = "CWE-78"
+rule.6.severity = "major"
+rule.6.factor   = "security"
+rule.6.minutes  = 25
+rule.6.enabled  = true
+rule.6.pattern  = "(^|[^.\\w/])(system|popen)\\s*\\(\\s*[^\"'L]|\\bos\\.system\\s*\\(\\s*[^\"']|\\bsubprocess\\.call\\s*\\(\\s*[^\"'[]"
+
+# --- Robustness / Changeability (rules 7-10) ------------------------------
+
+rule.7.id       = "ROB-EMPTY-CATCH"
+rule.7.title    = "Empty or swallowed exception handler"
+rule.7.cwe      = "CWE-1069"
+rule.7.severity = "major"
+rule.7.factor   = "robustness"
+rule.7.minutes  = 15
+rule.7.enabled  = true
+rule.7.pattern  = "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"
+
+rule.8.id       = "ROB-TODO"
+rule.8.title    = "Unresolved TODO / FIXME / HACK marker"
+rule.8.cwe      = ""
+rule.8.severity = "minor"
+rule.8.factor   = "changeability"
+rule.8.minutes  = 10
+rule.8.enabled  = true
+rule.8.pattern  = "\\b(todo|fixme|hack|xxx)\\b"
+
+rule.9.id       = "EFF-SELECT-STAR"
+rule.9.title    = "SELECT * may fetch unused columns"
+rule.9.cwe      = ""
+rule.9.severity = "minor"
+rule.9.factor   = "efficiency"
+rule.9.minutes  = 10
+rule.9.enabled  = true
+rule.9.pattern  = "select\\s+\\*\\s+from"
+
+# CHG-MAGIC-PATH: safe exclusions via negative lookahead:
+#   /var/run/secrets/kubernetes.io/ -- CNCF standard in-cluster SA path (v2.5.3)
+#   /dev/null, /dev/std*            -- POSIX pseudo-devices
+# Windows paths (C:\...) are still flagged unless inside a _WIN32 guard.
+rule.10.id       = "CHG-MAGIC-PATH"
+rule.10.title    = "Hardcoded absolute filesystem path"
+rule.10.cwe      = ""
+rule.10.severity = "minor"
+rule.10.factor   = "changeability"
+rule.10.minutes  = 10
+rule.10.enabled  = true
+rule.10.pattern  = "([\"'])((?:/(?:etc|usr|home|opt|tmp|root|srv|proc|sys|mnt)(?:/[^\\s\"']+)+|/var(?!/run/secrets/kubernetes\\.io/)(?:/[^\\s\"']+)+)|(?:/(?!api/|metrics|docs/|\\.well-known|dev/null|dev/std)[a-z0-9_.\\-]+(?:/[a-z0-9_.\\-]+)+\\.[a-z0-9]{1,6})|(?:[a-z]:\\\\\\\\[^\"'\\s]+))\\1"
+
+# --- More Security (rules 11-14) ------------------------------------------
+
+rule.11.id       = "SEC-INSECURE-RANDOM"
+rule.11.title    = "Insecure or unseeded random source"
+rule.11.cwe      = "CWE-330"
+rule.11.severity = "minor"
+rule.11.factor   = "security"
+rule.11.minutes  = 15
+rule.11.enabled  = true
+rule.11.pattern  = "\\b(rand\\s*\\(|math\\.random|random\\.random)\\b"
+
+rule.12.id       = "SEC-PRIVATE-KEY"
+rule.12.title    = "PEM private key block embedded in source"
+rule.12.cwe      = "CWE-321"
+rule.12.severity = "critical"
+rule.12.factor   = "security"
+rule.12.minutes  = 60
+rule.12.enabled  = true
+rule.12.pattern  = "-----BEGIN (RSA |EC |DSA |OPENSSH |PRIVATE KEY)"
+
+rule.13.id       = "SEC-AWS-KEY"
+rule.13.title    = "Possible AWS access key ID (AKIA...)"
+rule.13.cwe      = "CWE-798"
+rule.13.severity = "critical"
+rule.13.factor   = "security"
+rule.13.minutes  = 60
+rule.13.enabled  = true
+rule.13.pattern  = "AKIA[0-9A-Z]{16}"
+
+rule.14.id       = "SEC-BEARER-TOKEN"
+rule.14.title    = "Possible bearer token or JWT literal in source"
+rule.14.cwe      = "CWE-798"
+rule.14.severity = "major"
+rule.14.factor   = "security"
+rule.14.minutes  = 30
+rule.14.enabled  = true
+rule.14.pattern  = "Bearer\\s+[A-Za-z0-9\\-_]{20,}\\.[A-Za-z0-9\\-_]"
+
+# Transferability (rule 15; disabled by default)
+rule.15.id       = "CHG-NO-LICENSE"
+rule.15.title    = "No SPDX license identifier or copyright notice"
+rule.15.cwe      = ""
+rule.15.severity = "info"
+rule.15.factor   = "transferability"
+rule.15.minutes  = 5
+rule.15.enabled  = false
+rule.15.pattern  = "SPDX-License-Identifier"
+
+# --- MISRA-C / CERT-C (rules 16-20; disabled by default) ------------------
+# Heuristic regex approximations only. Not a certified checker.
+
+rule.16.id       = "MISRA-C-15-1"
+rule.16.title    = "goto statement used (MISRA-C Rule 15.1)"
+rule.16.cwe      = "CWE-1120"
+rule.16.severity = "major"
+rule.16.factor   = "changeability"
+rule.16.minutes  = 20
+rule.16.enabled  = false
+rule.16.pattern  = "\\bgoto\\b"
+
+rule.17.id       = "MISRA-C-21-3"
+rule.17.title    = "Dynamic memory allocation in non-dynamic context (MISRA-C 21.3)"
+rule.17.cwe      = "CWE-789"
+rule.17.severity = "major"
+rule.17.factor   = "robustness"
+rule.17.minutes  = 30
+rule.17.enabled  = false
+rule.17.pattern  = "\\b(malloc|calloc|realloc|free)\\s*\\("
+
+rule.18.id       = "CERT-MSC32-C"
+rule.18.title    = "Unseeded random number generator (CERT MSC32-C)"
+rule.18.cwe      = "CWE-330"
+rule.18.severity = "major"
+rule.18.factor   = "security"
+rule.18.minutes  = 20
+rule.18.enabled  = false
+rule.18.pattern  = "\\brand\\s*\\(\\s*\\)"
+
+rule.19.id       = "CERT-STR31-C"
+rule.19.title    = "Unbounded string copy: strcpy/strcat/gets/sprintf (CERT STR31-C)"
+rule.19.cwe      = "CWE-120"
+rule.19.severity = "critical"
+rule.19.factor   = "security"
+rule.19.minutes  = 45
+rule.19.enabled  = false
+rule.19.pattern  = "\\b(strcpy|strcat|gets|sprintf)\\s*\\("
+
+rule.20.id       = "CERT-ERR33-C"
+rule.20.title    = "Return value of error-prone function unchecked (CERT ERR33-C)"
+rule.20.cwe      = "CWE-252"
+rule.20.severity = "minor"
+rule.20.factor   = "robustness"
+rule.20.minutes  = 15
+rule.20.enabled  = false
+rule.20.pattern  = "^\\s*(fopen|fclose|fread|fwrite|scanf|fscanf)\\s*\\("
+
+# --- Portability (rules 21-27; enabled by default) ------------------------
+# The rule engine suppresses PORT-WIN-* inside #ifdef _WIN32 blocks and
+# PORT-POSIX-* inside #ifndef _WIN32 blocks automatically.
+
+rule.21.id       = "PORT-WIN-API"
+rule.21.title    = "Windows-specific header without #ifdef _WIN32 guard"
+rule.21.cwe      = "CWE-1164"
 rule.21.severity = "major"
-rule.21.factor = "portability"
-rule.21.minutes = 30
-rule.21.enabled = true
-rule.21.pattern = "#include\s*<(windows\.h|winsock2?\.h|direct\.h|io\.h|conio\.h|winerror\.h|tchar\.h|windef\.h)>"
+rule.21.factor   = "portability"
+rule.21.minutes  = 30
+rule.21.enabled  = true
+rule.21.pattern  = "#include\\s*<(windows\\.h|winsock2?\\.h|direct\\.h|io\\.h|conio\\.h|winerror\\.h|tchar\\.h|windef\\.h)>"
 
-rule.22.id = "PORT-WIN-TYPES"
-rule.22.title = "Windows-specific type used without portability guard (DWORD, HANDLE, HRESULT, BOOL, TCHAR)"
-rule.22.cwe = "CWE-1164"
+rule.22.id       = "PORT-WIN-TYPES"
+rule.22.title    = "Windows-specific type without portability guard (DWORD HANDLE etc.)"
+rule.22.cwe      = "CWE-1164"
 rule.22.severity = "minor"
-rule.22.factor = "portability"
-rule.22.minutes = 15
-rule.22.enabled = true
-rule.22.pattern = "\b(DWORD|HANDLE|HRESULT|HWND|HMODULE|HINSTANCE|LPCSTR|LPSTR|LPCTSTR|LPTSTR|TCHAR|WORD|QWORD)\b"
+rule.22.factor   = "portability"
+rule.22.minutes  = 15
+rule.22.enabled  = true
+rule.22.pattern  = "\\b(DWORD|HANDLE|HRESULT|HWND|HMODULE|HINSTANCE|LPCSTR|LPSTR|LPCTSTR|LPTSTR|TCHAR|WORD|QWORD)\\b"
 
-rule.23.id = "PORT-WIN-SLEEP"
-rule.23.title = "Windows Sleep() used instead of portable alternative"
-rule.23.cwe = "CWE-1164"
+rule.23.id       = "PORT-WIN-SLEEP"
+rule.23.title    = "Windows Sleep() -- use std::this_thread::sleep_for for portability"
+rule.23.cwe      = "CWE-1164"
 rule.23.severity = "minor"
-rule.23.factor = "portability"
-rule.23.minutes = 10
-rule.23.enabled = true
-rule.23.pattern = "\bSleep\s*\(\s*[0-9]"
+rule.23.factor   = "portability"
+rule.23.minutes  = 10
+rule.23.enabled  = true
+rule.23.pattern  = "\\bSleep\\s*\\(\\s*[0-9]"
 
-rule.24.id = "PORT-POSIX-FORK"
-rule.24.title = "POSIX fork/vfork used -- not available on Windows"
-rule.24.cwe = "CWE-1164"
+rule.24.id       = "PORT-POSIX-FORK"
+rule.24.title    = "POSIX fork/vfork -- not available on Windows"
+rule.24.cwe      = "CWE-1164"
 rule.24.severity = "major"
-rule.24.factor = "portability"
-rule.24.minutes = 60
-rule.24.enabled = true
-rule.24.pattern = "\b(fork|vfork)\s*\(\s*\)"
+rule.24.factor   = "portability"
+rule.24.minutes  = 60
+rule.24.enabled  = true
+rule.24.pattern  = "\\b(fork|vfork)\\s*\\(\\s*\\)"
 
-rule.25.id = "PORT-POSIX-ONLY"
-rule.25.title = "POSIX-only header included without portability guard"
-rule.25.cwe = "CWE-1164"
+rule.25.id       = "PORT-POSIX-ONLY"
+rule.25.title    = "POSIX-only header without portability guard"
+rule.25.cwe      = "CWE-1164"
 rule.25.severity = "minor"
-rule.25.factor = "portability"
-rule.25.minutes = 20
-rule.25.enabled = true
-rule.25.pattern = "#include\s*<(unistd\.h|pthread\.h|sys/socket\.h|sys/mman\.h|sys/ioctl\.h|netinet/in\.h|arpa/inet\.h)>"
+rule.25.factor   = "portability"
+rule.25.minutes  = 20
+rule.25.enabled  = true
+rule.25.pattern  = "#include\\s*<(unistd\\.h|pthread\\.h|sys/socket\\.h|sys/mman\\.h|sys/ioctl\\.h|netinet/in\\.h|arpa/inet\\.h)>"
 
-rule.26.id = "PORT-PATH-SEP"
-rule.26.title = "Backslash path separator in string literal -- breaks on Linux/macOS"
-rule.26.cwe = "CWE-1164"
+rule.26.id       = "PORT-PATH-SEP"
+rule.26.title    = "Backslash path separator in string literal -- breaks on Linux/macOS"
+rule.26.cwe      = "CWE-1164"
 rule.26.severity = "minor"
-rule.26.factor = "portability"
-rule.26.minutes = 10
-rule.26.enabled = true
-rule.26.pattern = "\"[A-Za-z]:\\\\"
+rule.26.factor   = "portability"
+rule.26.minutes  = 10
+rule.26.enabled  = true
+rule.26.pattern  = "\"[A-Za-z]:\\\\\\\""
 
-rule.27.id = "PORT-MAX-PATH"
-rule.27.title = "MAX_PATH used -- Windows 260-char limit does not apply on Linux/macOS"
-rule.27.cwe = "CWE-1164"
+rule.27.id       = "PORT-MAX-PATH"
+rule.27.title    = "MAX_PATH used -- 260-char limit is Windows-specific"
+rule.27.cwe      = "CWE-1164"
 rule.27.severity = "minor"
-rule.27.factor = "portability"
-rule.27.minutes = 20
-rule.27.enabled = true
-rule.27.pattern = "\bMAX_PATH\b"
+rule.27.factor   = "portability"
+rule.27.minutes  = 20
+rule.27.enabled  = true
+rule.27.pattern  = "\\bMAX_PATH\\b"
 
-# Portability scoring scale (higher = more sensitive to issues per KLOC)
-score.scale.portability = 8.0
+# --- v2.5.x expanded rules (rules 28-35) ----------------------------------
 
-# v2.5.0: Expanded rule catalog - MISRA-C, CERT-C, and CWE additions
-# Rules 28-35. Enabled by default; adjust per-project in PSON.
-
-rule.28.id = "SEC-XSS-INNERHTML"
-rule.28.title = "Direct innerHTML assignment from variable (XSS risk)"
-rule.28.cwe = "CWE-79"
+# SEC-XSS-INNERHTML: fires only when a bare unescaped variable is interpolated.
+# Suppressed for: empty-string clears, pure literal assignments, and
+# all-esc()/t()/String()/Number()/encodeURI() wrapped interpolations. (v2.5.3)
+rule.28.id       = "SEC-XSS-INNERHTML"
+rule.28.title    = "innerHTML assigned with unescaped variable (XSS risk)"
+rule.28.cwe      = "CWE-79"
 rule.28.severity = "major"
-rule.28.factor = "security"
-rule.28.minutes = 20
-rule.28.enabled = true
-rule.28.pattern = "\.innerHTML\s*=\s*[^\"'`]"
+rule.28.factor   = "security"
+rule.28.minutes  = 20
+rule.28.enabled  = true
+rule.28.pattern  = "\\.innerHTML\\s*=.*\\+\\s*(?!esc\\s*\\(|t\\s*\\(|String\\s*\\(|Number\\s*\\(|encodeURI)[a-zA-Z_$]"
 
-rule.29.id = "SEC-PATH-TRAVERSAL"
-rule.29.title = "Unsanitized path component used in file operation (path traversal)"
-rule.29.cwe = "CWE-22"
+rule.29.id       = "SEC-PATH-TRAVERSAL"
+rule.29.title    = "Relative path traversal sequence (../ or ..\\)"
+rule.29.cwe      = "CWE-22"
 rule.29.severity = "critical"
-rule.29.minutes = 45
-rule.29.factor = "security"
-rule.29.enabled = true
-rule.29.pattern = "\.\.(\/|\\\\)\.\."
+rule.29.factor   = "security"
+rule.29.minutes  = 45
+rule.29.enabled  = true
+rule.29.pattern  = "(^|[\\w/\\\"\'\\'])\\.\\.(\\/|\\\\)"
 
-rule.30.id = "SEC-PRINTF-FORMAT"
-rule.30.title = "printf-family call with non-literal format string (CWE-134)"
-rule.30.cwe = "CWE-134"
+rule.30.id       = "SEC-PRINTF-FORMAT"
+rule.30.title    = "printf-family with non-literal format string (format injection)"
+rule.30.cwe      = "CWE-134"
 rule.30.severity = "major"
-rule.30.factor = "security"
-rule.30.minutes = 25
-rule.30.enabled = true
-rule.30.pattern = "\b(printf|fprintf|sprintf|snprintf)\s*\(\s*[a-zA-Z_]"
+rule.30.factor   = "security"
+rule.30.minutes  = 25
+rule.30.enabled  = true
+rule.30.pattern  = "\\b(printf|fprintf|sprintf|snprintf)\\s*\\(\\s*[a-zA-Z_]"
 
-rule.31.id = "ROB-NULL-DEREF"
-rule.31.title = "Pointer dereference without null check nearby (CWE-476)"
-rule.31.cwe = "CWE-476"
+rule.31.id       = "ROB-NULL-DEREF"
+rule.31.title    = "Pointer dereference via -> without visible null check"
+rule.31.cwe      = "CWE-476"
 rule.31.severity = "major"
-rule.31.factor = "robustness"
-rule.31.minutes = 20
-rule.31.enabled = true
-rule.31.pattern = "\w+\s*\([^)]*\)\s*->"
+rule.31.factor   = "robustness"
+rule.31.minutes  = 20
+rule.31.enabled  = true
+rule.31.pattern  = "\\w+\\s*\\([^)]*\\)\\s*->"
 
-rule.32.id = "EFF-LOOP-INVARIANT"
-rule.32.title = "Function call with no side effects inside loop condition"
-rule.32.cwe = ""
+rule.32.id       = "EFF-LOOP-INVARIANT"
+rule.32.title    = "size()/length() in loop condition -- hoist out of loop"
+rule.32.cwe      = ""
 rule.32.severity = "minor"
-rule.32.factor = "efficiency"
-rule.32.minutes = 10
-rule.32.enabled = true
-rule.32.pattern = "for\s*\([^;]*;\s*[a-zA-Z_][a-zA-Z0-9_]*\.(size|length|count|len)\s*\(\s*\)\s*[<>;]"
+rule.32.factor   = "efficiency"
+rule.32.minutes  = 10
+rule.32.enabled  = true
+rule.32.pattern  = "for\\s*\\([^;]*;\\s*[a-zA-Z_][a-zA-Z0-9_]*\\.(size|length|count|len)\\s*\\(\\s*\\)\\s*[<>;]"
 
-rule.33.id = "TRN-COMMENTED-CODE"
-rule.33.title = "Large commented-out code block (reduces transferability)"
-rule.33.cwe = ""
+rule.33.id       = "TRN-COMMENTED-CODE"
+rule.33.title    = "Commented-out code block (reduces readability and transferability)"
+rule.33.cwe      = ""
 rule.33.severity = "minor"
-rule.33.factor = "transferability"
-rule.33.minutes = 5
-rule.33.enabled = true
-rule.33.pattern = "//\s*(if|for|while|switch|return|int|void|auto|const)\b"
+rule.33.factor   = "transferability"
+rule.33.minutes  = 5
+rule.33.enabled  = true
+rule.33.pattern  = "//\\s*(if|for|while|switch|return|int|void|auto|const)\\b"
 
-rule.34.id = "MISRA-C-14-4"
-rule.34.title = "Non-boolean expression used as loop condition (MISRA-C 14.4)"
-rule.34.cwe = ""
+rule.34.id       = "MISRA-C-14-4"
+rule.34.title    = "Non-boolean loop condition (MISRA-C 14.4)"
+rule.34.cwe      = ""
 rule.34.severity = "minor"
-rule.34.factor = "robustness"
-rule.34.minutes = 10
-rule.34.enabled = false
-rule.34.pattern = "while\s*\(\s*(--[a-zA-Z_]|[a-zA-Z_][a-zA-Z0-9_]*--)\s*\)"
+rule.34.factor   = "robustness"
+rule.34.minutes  = 10
+rule.34.enabled  = false
+rule.34.pattern  = "while\\s*\\(\\s*(--[a-zA-Z_]|[a-zA-Z_][a-zA-Z0-9_]*--)\\s*\\)"
 
-rule.35.id = "CERT-MEM35-C"
-rule.35.title = "Insufficient memory allocated for object type (CERT MEM35-C)"
-rule.35.cwe = "CWE-131"
+rule.35.id       = "CERT-MEM35-C"
+rule.35.title    = "sizeof(ptr) used where sizeof(*ptr) intended (CERT MEM35-C)"
+rule.35.cwe      = "CWE-131"
 rule.35.severity = "major"
-rule.35.factor = "robustness"
-rule.35.minutes = 30
-rule.35.enabled = false
-rule.35.pattern = "malloc\s*\(\s*sizeof\s*\(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\*\s*\)"
+rule.35.factor   = "robustness"
+rule.35.minutes  = 30
+rule.35.enabled  = false
+rule.35.pattern  = "malloc\\s*\\(\\s*sizeof\\s*\\(\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*\\*\\s*\\)"

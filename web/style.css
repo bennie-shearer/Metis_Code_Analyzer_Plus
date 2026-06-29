@@ -561,3 +561,35 @@ tr.clickable:hover td { background: rgba(63, 208, 201, 0.07); }
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Quick-navigation pill bar ----------------------------------------- */
+.quicknav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+.qn-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.qn-pill:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+

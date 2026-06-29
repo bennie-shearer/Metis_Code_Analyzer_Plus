@@ -42,7 +42,7 @@
   <img src="logo.svg" alt="Metis Code Analyzer Plus logo">
   <div class="brand">
     <span class="name">Metis Code Analyzer Plus</span>
-    <span class="ver" id="ver">v2.5.0</span>
+    <span class="ver" id="ver">v2.7.4</span>
     <!-- v2.5.0: server health dot (green=up, red=down) via /api/health -->
     <span id="healthDot" class="health-dot" title="Checking server..."></span>
   </div>
@@ -70,6 +70,24 @@
     <button id="logout" class="ghost" data-i18n="logout" hidden>Sign out</button>
   </div>
 </header>
+
+<!-- Quick-navigation pill bar -->
+<nav class="quicknav" aria-label="Jump to section">
+  <a class="qn-pill" href="#sec-issues">Issues</a>
+  <a class="qn-pill" href="#sec-files">Files</a>
+  <a class="qn-pill" href="#sec-logs">Activity Log</a>
+  <a class="qn-pill" href="#sec-trends">Trends</a>
+  <a class="qn-pill" href="#sec-licenses">Licenses</a>
+  <a class="qn-pill" href="#sec-dups">Duplicates</a>
+  <a class="qn-pill" href="#sec-deps">Dependencies</a>
+  <a class="qn-pill" href="#sec-ai">AI Insights</a>
+  <a class="qn-pill" href="#sec-platform">Platform</a>
+  <a class="qn-pill" href="#sec-tech">Technologies</a>
+  <a class="qn-pill" href="#sec-gate">Quality Gate</a>
+  <a class="qn-pill" href="#sec-infra">Infrastructure</a>
+  <a class="qn-pill" href="#sec-tls">TLS</a>
+  <a class="qn-pill" href="#sec-admin">Admin</a>
+</nav>
 
 <div id="secBadges" class="sec-badges" hidden>
   <span id="badgeTls" class="sec-badge"></span>
@@ -99,7 +117,7 @@
   </div>
 
   <!-- Issues table - v2.5.0 adds Status column for lifecycle management -->
-  <div class="panel section">
+  <div class="panel section" id="sec-issues">
     <h2 data-i18n="issuesTitle">Issues</h2>
     <div class="filters" id="sevFilters">
       <button data-sev="all" class="active" data-i18n="filterAll">All</button>
@@ -133,7 +151,7 @@
     </div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-files">
     <h2 data-i18n="filesTitle">Files</h2>
     <div class="tablewrap">
       <table id="filesTable">
@@ -152,7 +170,7 @@
     </div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-logs">
     <h2 data-i18n="logsTitle">Activity Log</h2>
     <div class="filters">
       <button id="logRefresh" data-i18n="logsRefresh">Refresh</button>
@@ -168,7 +186,7 @@
     <div class="empty" id="logsEmpty" hidden data-i18n="logsEmpty">No log entries.</div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-trends">
     <h2 data-i18n="trendTitle">Scan Trends</h2>
     <p class="empty" id="trendEmpty" data-i18n="trendNone">No history yet. Each scan adds a data point.</p>
     <div id="trendCharts" hidden>
@@ -177,18 +195,18 @@
     </div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-licenses">
     <h2 data-i18n="licenseTitle">License Headers</h2>
     <div id="licensePanel"></div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-dups">
     <h2 data-i18n="dupTitle">Duplicate Blocks</h2>
     <p class="empty" id="dupEmpty" data-i18n="dupNone">No duplicate blocks detected.</p>
     <div id="dupList" class="dup-list"></div>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-deps">
     <h2 data-i18n="depTitle">Dependencies</h2>
     <p class="empty" id="depEmpty" data-i18n="depNone">No dependencies extracted.</p>
     <table id="depTable" class="data-table" hidden>
@@ -197,7 +215,7 @@
     </table>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-ai">
     <h2 data-i18n="aiTitle">AI Insights</h2>
     <div class="filters">
       <button id="aiRun" data-i18n="aiRun">Summarize with AI</button>
@@ -206,7 +224,7 @@
     <pre id="aiOut" class="ai-out" hidden></pre>
   </div>
 
-  <div class="panel section">
+  <div class="panel section" id="sec-platform">
     <h2 data-i18n="platformTitle">Platform Compatibility</h2>
     <div id="platformPanel">
       <p class="empty" data-i18n="platformNone">No platform-specific issues detected.</p>
@@ -214,7 +232,7 @@
   </div>
 
   <!-- v2.5.0: Technologies panel - GET /api/technologies -->
-  <div class="panel section">
+  <div class="panel section" id="sec-tech">
     <h2>Technology Inventory</h2>
     <p class="section-desc">Detected frameworks and libraries from import and include patterns. Powered by <code>GET /api/technologies</code>. Enable via <code>technologies.enabled = true</code> in <code>code_analyzer.pson</code>.</p>
     <div id="techPanel">
@@ -223,7 +241,7 @@
   </div>
 
   <!-- v2.5.0: Quality Gate panel - GET /api/gate -->
-  <div class="panel section">
+  <div class="panel section" id="sec-gate">
     <h2>Quality Gate</h2>
     <p class="section-desc">CI/CD quality gate result. Configure via <code>gate.*</code> keys in <code>code_analyzer.pson</code>. Use <code>GET /api/gate</code> for headless CI integration or <code>gate.exit_nonzero = true</code> for non-zero exit on failure.</p>
     <div id="gatePanel">
@@ -232,7 +250,7 @@
   </div>
 
   <!-- Infrastructure: GPU / Kubernetes / Containers (v2.2.0) -->
-  <div class="panel section">
+  <div class="panel section" id="sec-infra">
     <h2>Infrastructure</h2>
     <p class="section-desc">GPU, Kubernetes, and Container integrations are reserved for future C++20 work targeting Windows, Linux, and macOS. Endpoints are live and report current status from the PSON configuration.</p>
     <div class="infra-grid">
@@ -264,7 +282,7 @@
   </div>
 
   <!-- TLS / Security Configuration panel (v2.2.0) -->
-  <div class="panel section">
+  <div class="panel section" id="sec-tls">
     <h2>TLS / Security Configuration</h2>
     <p class="section-desc">Transport Layer Security status for this session. Post-quantum TLS (X25519MLKEM768, NIST FIPS 203 ML-KEM) is negotiated when the server is built with OpenSSL 3.5+; older OpenSSL falls back to classical groups automatically. Configure via <code>tls.*</code> in <code>code_analyzer.pson</code>.</p>
     <div class="tls-grid">
@@ -280,7 +298,7 @@
   </div>
 
   <!-- AI Configuration panel (v2.2.0) -->
-  <div class="panel section">
+  <div class="panel section" id="sec-aiconfig">
     <h2>AI Configuration</h2>
     <p class="section-desc">Optional AI-assisted code-quality summaries via an OpenAI-compatible provider. Requires a TLS-enabled build. Trigger a summary from the AI Insights panel above. The API key is never exposed in the dashboard.</p>
     <div class="tls-grid">
@@ -295,7 +313,7 @@
   </div>
 
   <!-- v2.5.0: Settings / Admin Tools panel -->
-  <div class="panel section">
+  <div class="panel section" id="sec-admin">
     <h2>Admin Tools</h2>
     <p class="section-desc">Administrative utilities. These endpoints require authentication when <code>auth.enabled = true</code>.</p>
 

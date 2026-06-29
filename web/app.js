@@ -886,6 +886,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+
     applyTheme(getCookie("mctheme") || "dark");
     var savedFont = parseInt(getCookie("mcfont"), 10);
     applyFontScale(isNaN(savedFont) ? 100 : savedFont);
@@ -902,15 +903,7 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (s) { renderSecurity(s); })
       .catch(function () { renderSecurity(null); /* show dimmed badges on any failure */ });
-    [["/api/gpu", "pgpu"], ["/api/kubernetes", "pk8s"], ["/api/containers", "pctr"]].forEach(function (p) {
-      api(p[0]).then(function (d) {
-        var span = el(p[1]);
-        if (!span) return;
-        span.textContent = d.status || "unknown";
-        if (d.status === "planned") span.classList.add("planned");
-        span.title = d.note || "";
-      }).catch(function () { /* best-effort; non-fatal */ });
-    });
+
     api("/api/config").then(function (c) {
       el("root").value = c.scan_root || ".";
       if (c.grade_thresholds) state.grades = c.grade_thresholds;
@@ -963,6 +956,16 @@
             var sel = el("projSelect");
             if (sel) sel.hidden = true;
           });
+        /* Load infrastructure status after auth (requires valid session). */
+        [["/api/gpu", "pgpu"], ["/api/kubernetes", "pk8s"], ["/api/containers", "pctr"]].forEach(function (p) {
+          api(p[0]).then(function (d) {
+            var span = el(p[1]);
+            if (!span) return;
+            span.textContent = d.status || "unknown";
+            if (d.status === "planned") span.classList.add("planned");
+            span.title = d.note || "";
+          }).catch(function () { /* best-effort; non-fatal */ });
+        });
         loadAll();
       }
     });

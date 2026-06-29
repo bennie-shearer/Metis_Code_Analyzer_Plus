@@ -1,7 +1,7 @@
 # Metis Code Analyzer Plus - REST API
 
-Version 2.5.1. All responses are JSON unless noted. The server listens on
-`server.host` and `port` from `code_analyzer.pson` (default `0.0.0.0:8080`).
+Version 2.7.4. All responses are JSON unless noted. The server listens on
+`server.host` and `port` from `code_analyzer.pson` (default `0.0.0.0:8443`).
 
 ---
 
@@ -12,7 +12,7 @@ Version 2.5.1. All responses are JSON unless noted. The server listens on
 Product name, version, rule count, and active rule count.
 
 ```json
-{ "product": "Metis Code Analyzer Plus", "version": "2.5.1",
+{ "product": "Metis Code Analyzer Plus", "version": "2.7.4",
   "rules": 20, "rules_active": 14 }
 ```
 
@@ -125,7 +125,7 @@ AI settings; the API key is never included.
 
 ## Scanning
 
-### GET /api/scan/ws (WebSocket) — v2.5.0
+### GET /api/scan/ws (WebSocket) -- v2.7.4
 
 Live scan progress via WebSocket (RFC 6455). Upgrade with `wss://` (TLS) or
 `ws://` (plain HTTP). Authentication via `mcsid` session cookie in the upgrade
@@ -200,7 +200,7 @@ Returns source lines around the given file and line for the inline preview.
 
 ## Issue Lifecycle
 
-Issue status overrides persist across server restarts (v2.5.0). Status is
+Issue status overrides persist across server restarts (v2.7.4). Status is
 written to `data/issue_status.ndjson` (configurable via `ui.issue_status_file`
 in `code_analyzer.pson`) on every `POST /api/issue/status` call and reloaded
 at startup.

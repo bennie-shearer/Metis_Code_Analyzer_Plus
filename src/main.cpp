@@ -414,6 +414,18 @@ int main(int argc, char** argv) {
     if (project_defs.empty()) {
         project_defs.push_back({"default", scan_root});
     }
+    /* Resolve every project root to an absolute path now so that
+     * scanned_root is always an absolute path in results and exports.
+     * This ensures download_stem() derives the correct directory name
+     * even when scan.root is "." or a relative path. */
+    {
+        namespace fs = std::filesystem;
+        for (auto& pd : project_defs) {
+            std::error_code ec;
+            fs::path abs = fs::weakly_canonical(fs::path(pd.root), ec);
+            if (!ec && !abs.empty()) pd.root = abs.string();
+        }
+    }
 
     /* AI summary config (outbound HTTPS; requires a TLS-enabled build). */
     mc::ai::AiOptions ai;
@@ -1597,7 +1609,7 @@ int main(int argc, char** argv) {
             std::string runtime;
             /* Check for Docker/Podman socket (POSIX) or named pipe (Windows). */
 #ifdef _WIN32
-            std::ifstream pipe("\\\\.\\pipe\\docker_engine", std::ios::binary);
+            std::ifstream pipe("\\\\.\\pipe\\docker_engine", std::ios::binary); /* metis-suppress SEC-PATH-TRAVERSAL: Windows named pipe path, not a traversal */
             if (pipe.is_open()) { found = true; runtime = "Docker (Windows named pipe)"; pipe.close(); }
 #else
             for (const char* path : {"/var/run/docker.sock",
