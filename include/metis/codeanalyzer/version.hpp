@@ -7,9 +7,9 @@
 
 namespace metis::codeanalyzer {
 inline constexpr const char* product = "Metis Code Analyzer Plus";
-inline constexpr const char* version = "2.7.4";
+inline constexpr const char* version = "2.7.14";
 } /* namespace metis::codeanalyzer */
 
-#define METIS_CODE_ANALYZER_VERSION_STRING "2.7.4"
+#define METIS_CODE_ANALYZER_VERSION_STRING "2.7.14"
 
 #endif /* METIS_CODE_ANALYZER_VERSION_HPP */

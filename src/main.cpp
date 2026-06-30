@@ -444,6 +444,15 @@ int main(int argc, char** argv) {
         excludes = {".git", "build", "node_modules", "cmake-build-debug",
                     "cmake-build-release", "dist", "vendor", "third_party"};
     }
+    {
+        std::string ex_list;
+        for (std::size_t i = 0; i < excludes.size(); ++i) {
+            if (i) ex_list += ", ";
+            ex_list += "\"" + excludes[i] + "\"";
+        }
+        mc::Logger::instance().info("Scan excludes active (" +
+            std::to_string(excludes.size()) + "): " + ex_list);
+    }
 
     const double hourly_rate = cfg.get_double("debt.hourly_rate", 75.0);
     const double dev_min_per_line = cfg.get_double("debt.dev_minutes_per_line", 0.5);
@@ -896,7 +905,9 @@ int main(int argc, char** argv) {
                 projects[i]->latest = std::move(r);
             }
             logger.info("Scanned " + std::to_string(projects[i]->latest.report.file_count) +
-                        " files, " + std::to_string(projects[i]->latest.report.issue_count) + " issues");
+                        " files, " + std::to_string(projects[i]->latest.report.issue_count) +
+                        " issues, " + std::to_string(projects[i]->latest.report.duplicate_blocks) +
+                        " duplicate blocks");
             if (gate_enabled && i == 0) {
                 GateResult gr = eval_gate(projects[i]->latest);
                 logger.info(std::string("Gate: ") + (gr.passed ? "PASS" : "FAIL") +
@@ -1320,7 +1331,9 @@ int main(int argc, char** argv) {
         }
         std::lock_guard<std::mutex> lk(get_project().mtx);
         logger.info("Scan complete: " + std::to_string(get_project().latest.report.file_count) +
-                    " files, " + std::to_string(get_project().latest.report.issue_count) + " issues");
+                    " files, " + std::to_string(get_project().latest.report.issue_count) +
+                    " issues, " + std::to_string(get_project().latest.report.duplicate_blocks) +
+                    " duplicate blocks");
         mc::http::Response res;
         res.body = report_json(get_project().latest, model.config()).dump();
         return res;
@@ -1680,23 +1693,32 @@ int main(int argc, char** argv) {
             root = qp.substr(rp + 5);
             auto amp = root.find('&');
             if (amp != std::string::npos) root = root.substr(0, amp);
-            /* URL-decode %2F etc. - simple pass for now. */
+            root = url_decode(root);
         }
 
-        mc::http::Server::ws_send_text(conn,
-            "{\"event\":\"start\",\"root\":\"" + root + "\"}");
+        {
+            mc::json::Value start_msg = mc::json::Value::object();
+            start_msg.set("event", std::string("start"));
+            start_msg.set("root", root);
+            mc::http::Server::ws_send_text(conn, start_msg.dump());
+        }
 
         logger.info("WebSocket scan started for '" + root + "'");
 
         mc::AnalysisResult r = analyzer.analyze(root);
 
         /* Send completion event. */
-        std::string done_msg =
-            "{\"event\":\"done\","
-            "\"files\":" + std::to_string(r.report.file_count) + ","
-            "\"issues\":" + std::to_string(r.report.issue_count) + ","
-            "\"tqi\":" + [&](){ std::ostringstream s; s << std::fixed; s.precision(1); s << r.report.health.tqi; return s.str(); }() +
-            "}";
+        mc::json::Value done_obj = mc::json::Value::object();
+        done_obj.set("event", std::string("done"));
+        done_obj.set("files", static_cast<long long>(r.report.file_count));
+        done_obj.set("issues", static_cast<long long>(r.report.issue_count));
+        {
+            std::ostringstream s; s << std::fixed; s.precision(1); s << r.report.health.tqi;
+            double rounded_tqi = 0.0;
+            try { rounded_tqi = std::stod(s.str()); } catch (...) { rounded_tqi = r.report.health.tqi; }
+            done_obj.set("tqi", rounded_tqi);
+        }
+        std::string done_msg = done_obj.dump();
         mc::http::Server::ws_send_text(conn, done_msg);
 
         /* Commit scan results. */
@@ -1707,7 +1729,8 @@ int main(int argc, char** argv) {
             get_project().latest = std::move(r);
         }
         logger.info("WebSocket scan done: " +
-            std::to_string(get_project().latest.report.file_count) + " files");
+            std::to_string(get_project().latest.report.file_count) + " files, " +
+            std::to_string(get_project().latest.report.duplicate_blocks) + " duplicate blocks");
 
         mc::http::Server::ws_close(conn);
     });

@@ -751,6 +751,16 @@
       btn.disabled = true; btn.textContent = t("analyzing") || "Analyzing...";
       if (prog) prog.hidden = false;
 
+      var resetUI = function () {
+        btn.disabled = false; btn.textContent = t("analyze") || "Analyze";
+        if (prog) prog.hidden = true;
+        if (label) label.textContent = "";
+      };
+
+      /* Hard safety timeout: no matter what happens with the WebSocket or the
+       * fallback POST, the button is guaranteed to reset after 20 seconds. */
+      var hardTimeout = setTimeout(resetUI, 20000);
+
       /* v2.5.0: Use WebSocket for live scan progress; fall back to POST if WS fails. */
       var wsProto = (location.protocol === "https:") ? "wss" : "ws";
       var wsUrl = wsProto + "://" + location.host + "/api/scan/ws?root=" + encodeURIComponent(root);
@@ -768,21 +778,22 @@
             } else if (msg.event === "progress") {
               if (label) label.textContent = "Scanned " + (msg.n || "?") + " / " + (msg.total || "?") + " files...";
             } else if (msg.event === "done") {
+              clearTimeout(hardTimeout);
               if (label) label.textContent = msg.files + " files, " + msg.issues + " issues, TQI " + msg.tqi;
               loadAll();
-              setTimeout(function () {
-                btn.disabled = false; btn.textContent = t("analyze") || "Analyze";
-                if (prog) prog.hidden = true;
-                if (label) label.textContent = "Scanning...";
-              }, 1800);
+              setTimeout(resetUI, 1800);
             }
           } catch (e) { /* ignore parse errors */ }
         };
         ws.onerror = function () {
-          if (!wsOk) fallbackScan();
+          if (!wsOk) { fallbackScan(); return; }
+          clearTimeout(hardTimeout);
+          resetUI();
         };
         ws.onclose = function () {
-          if (!wsOk) fallbackScan();
+          if (!wsOk) { fallbackScan(); return; }
+          clearTimeout(hardTimeout);
+          resetUI();
         };
       } catch (e) {
         fallbackScan();
@@ -795,8 +806,8 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ root: root })
         }).then(loadAll).catch(function () { /* non-fatal */ }).finally(function () {
-          btn.disabled = false; btn.textContent = t("analyze") || "Analyze";
-          if (prog) prog.hidden = true;
+          clearTimeout(hardTimeout);
+          resetUI();
         });
       }
     });
@@ -956,17 +967,25 @@
             var sel = el("projSelect");
             if (sel) sel.hidden = true;
           });
-        /* Load infrastructure status after auth (requires valid session). */
-        [["/api/gpu", "pgpu"], ["/api/kubernetes", "pk8s"], ["/api/containers", "pctr"]].forEach(function (p) {
-          api(p[0]).then(function (d) {
-            var span = el(p[1]);
-            if (!span) return;
-            span.textContent = d.status || "unknown";
-            if (d.status === "planned") span.classList.add("planned");
-            span.title = d.note || "";
-          }).catch(function () { /* best-effort; non-fatal */ });
-        });
-        loadAll();
+        /* Load infrastructure status after initial data load completes. */
+        function loadInfra() {
+          [["/api/gpu", "pgpu"], ["/api/kubernetes", "pk8s"], ["/api/containers", "pctr"]].forEach(function (p) {
+            api(p[0]).then(function (d) {
+              var span = el(p[1]);
+              if (!span) return;
+              span.textContent = d.status || "unknown";
+              span.classList.remove("planned", "enabled", "disabled");
+              if (d.status === "planned")   span.classList.add("planned");
+              if (d.status === "available") span.classList.add("enabled");
+              if (d.status === "disabled")  span.classList.add("disabled");
+              span.title = d.note || "";
+            }).catch(function () {
+              var span = el(p[1]);
+              if (span) { span.textContent = "unavailable"; span.title = "Could not reach endpoint."; }
+            });
+          });
+        }
+        loadAll().then(loadInfra).catch(loadInfra);
       }
     });
     /* health ping - status dot in header */

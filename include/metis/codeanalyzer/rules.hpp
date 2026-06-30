@@ -243,7 +243,7 @@ inline RuleSet default_rules() {
     rs.add("ROB-EMPTY-CATCH", "Empty or swallowed exception handler",
            "CWE-1069", Severity::Major, HealthFactor::Robustness, 15,
            R"(catch\s*\([^)]*\)\s*\{\s*\})");
-    rs.add("ROB-TODO", "Unresolved TODO / FIXME marker",
+    rs.add("ROB-TODO", "Unresolved TODO / FIXME marker", /* metis-suppress ROB-TODO: rule catalog pattern definition, not an actual marker */
            "", Severity::Minor, HealthFactor::Changeability, 10,
            R"(\b(todo|fixme|hack|xxx)\b)");
     rs.add("EFF-SELECT-STAR", "SELECT * may fetch unused columns",

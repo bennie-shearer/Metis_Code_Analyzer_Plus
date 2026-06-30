@@ -43,7 +43,7 @@ public:
         if (!in) return false;
         std::string line;
         while (std::getline(in, line)) {
-            parse_line(line);
+            parse_line_with_continuation(line, in);
         }
         return true;
     }
@@ -52,7 +52,7 @@ public:
         std::istringstream in(text);
         std::string line;
         while (std::getline(in, line)) {
-            parse_line(line);
+            parse_line_with_continuation(line, in);
         }
     }
 
@@ -103,6 +103,38 @@ public:
     bool has(const std::string& key) const { return map_.count(key) != 0; }
 
 private:
+    /* Reads additional lines from `in` and appends them to `line` whenever the
+     * accumulated value contains an unterminated array literal -- an open '['
+     * (outside a quoted string) with no matching ']' yet on the same logical
+     * value. This allows scan.exclude and similar array keys to be written
+     * across multiple lines in the PSON file, as the shipped config does. */
+    template <typename Stream>
+    void parse_line_with_continuation(std::string line, Stream& in) {
+        while (needs_continuation(line)) {
+            std::string next;
+            if (!std::getline(in, next)) break;
+            line += " " + strip_comment(next);
+        }
+        parse_line(line);
+    }
+
+    /* True if `line` (after stripping any trailing comment) contains an
+     * array literal whose '[' is not yet matched by a ']', tracked outside
+     * quoted strings so brackets inside string content don't confuse it. */
+    static bool needs_continuation(const std::string& raw_line) {
+        std::string line = strip_comment(raw_line);
+        bool in_str = false;
+        int depth = 0;
+        bool saw_open = false;
+        for (char c : line) {
+            if (c == '"') { in_str = !in_str; continue; }
+            if (in_str) continue;
+            if (c == '[') { ++depth; saw_open = true; }
+            else if (c == ']') { --depth; }
+        }
+        return saw_open && depth > 0;
+    }
+
     void parse_line(std::string line) {
         std::string t = trim(strip_comment(line));
         if (t.empty()) return;

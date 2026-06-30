@@ -1,6 +1,6 @@
 # Metis Code Analyzer Plus
 
-Version 2.7.4
+Version 2.7.14
 
 Application intelligence and static code analysis for source trees. Metis Code
 Analyzer Plus scans a codebase and reports quality metrics, technical debt,
