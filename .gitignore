@@ -1,0 +1,72 @@
+# ==========================================================================
+# Metis Code Analyzer Plus - .gitignore
+# ==========================================================================
+
+# Build output directories
+build/
+cmake-build-debug/
+cmake-build-release/
+cmake-build-*/
+out/
+
+# Binary / object files
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# CMake generated files (not the CMakeLists.txt itself)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# Runtime data (created at startup; not part of source)
+data/
+logs/
+*.log
+*.ndjson
+
+# TLS certificates (generated locally; never commit private keys)
+certs/*.pem
+certs/*.crt
+certs/*.key
+certs/*.p12
+certs/*.pfx
+
+# Editor and IDE artifacts
+.idea/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.user
+.DS_Store
+Thumbs.db
+
+# Python byte-compiled (build scripts only)
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.swp
+*~
+
+# OpenSSL prebuilt (large; distribute separately from the repository)
+# Uncomment if you exclude the prebuilts from version control:
+# openssl-prebuilt/
+
+# Compressed release archives
+*.zip
+*.tar.gz
+*.tgz
